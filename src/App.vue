@@ -1,10 +1,7 @@
 <template>
   <div class="app">
     <!-- 导航栏 -->
-    <button class="nav-toggle" @click="toggleNav">
-      <i :class="navOpen ? 'fas fa-times' : 'fas fa-bars'"></i>
-    </button>
-    <div class="navbar" :class="{ 'toggle-open': navOpen }" @mouseleave="closeNav">
+    <div class="navbar" @mouseenter="navOpen = true" @mouseleave="navOpen = false">
       <div class="navbar-header">
         <div class="logo">
           <img src="/favicon.ico" alt="Logo" style="width:24px;height:24px;border-radius:4px;" />
@@ -14,6 +11,7 @@
       <div class="badge"><i class="fas fa-images"></i> {{ allData.length }} 张</div>
       <div class="search-box">
         <input type="text" v-model="searchKeyword" placeholder="搜索年份/关键词..." @input="doSearch" @keydown.enter="doSearch" />
+        <button class="search-clear" v-if="searchKeyword.length > 0" @click="clearSearch"><i class="fas fa-times-circle"></i></button>
         <button class="search-btn" @click="doSearch"><i class="fas fa-search"></i></button>
       </div>
       <div class="nav-actions">
@@ -63,11 +61,12 @@
         <img ref="previewImg" class="preview-image" :src="previewUrl" alt="预览" crossorigin="anonymous" @load="onPreviewLoad" />
       </div>
 
-      <div class="toolbar">
+      <!-- ★★★ 工具栏 - 点击图片切换显隐 ★★★ -->
+      <div class="toolbar" :class="{ hidden: !toolbarVisible }">
         <a href="/" class="btn"><i class="fas fa-home"></i> <span>首页</span></a>
         <div class="dropdown">
-          <button class="btn"><i class="fas fa-download"></i> <span>下载</span> <i class="fas fa-chevron-down"></i></button>
-          <div class="dropdown-menu">
+          <button class="btn" @click.stop="toggleDropdown"><i class="fas fa-download"></i> <span>下载</span> <i class="fas fa-chevron-down"></i></button>
+          <div class="dropdown-menu" :class="{ show: dropdownOpen }" @mouseleave="dropdownOpen = false">
             <a href="#" @click.prevent="downloadImage('4k')"><i class="fas fa-star"></i> 4K (UHD原图)</a>
             <a href="#" @click.prevent="downloadImage('fhd')"><i class="fas fa-desktop"></i> 全高清 (1920×1080)</a>
             <a href="#" @click.prevent="downloadImage('hd')"><i class="fas fa-laptop"></i> 高清 (1366×768)</a>
@@ -76,9 +75,8 @@
             <a href="#" @click.prevent="downloadImage('mobile_s')"><i class="fas fa-mobile"></i> 手机 (768×1280)</a>
           </div>
         </div>
-        <!-- ★★★ 打赏按钮 ★★★ -->
         <div class="donate-qr-wrapper">
-          <button class="btn" id="donateBtn"><i class="fas fa-mug-hot"></i><span>打赏</span></button>
+          <button class="btn"><i class="fas fa-mug-hot"></i><span>打赏</span></button>
           <div class="qr-tooltip">
             <div class="qr-row">
               <div class="qr-item"><img src="https://img.hangdn.com/hd/wechat.png" alt="微信支付" /><span class="qr-label wechat"><i class="fab fa-weixin"></i> 微信支付</span></div>
@@ -90,7 +88,7 @@
         <button class="btn" @click="closePreview"><i class="fas fa-times"></i></button>
       </div>
 
-      <div class="info-panel">
+      <div class="info-panel" :class="{ hidden: !toolbarVisible }">
         <div class="copyright">{{ previewItem?.copyright }}</div>
         <div class="date">{{ previewItem?.startdate || previewItem?.date }}</div>
         <div class="desc">{{ previewItem?.title }}</div>
@@ -135,6 +133,8 @@ const previewVisible = ref(false)
 const previewItem = ref(null)
 const previewIndex = ref(0)
 const previewUrl = ref('')
+const toolbarVisible = ref(true)
+const dropdownOpen = ref(false)
 
 // 评论
 const commentVisible = ref(false)
@@ -276,6 +276,11 @@ function doSearch() {
   renderPage(1)
 }
 
+function clearSearch() {
+  searchKeyword.value = ''
+  doSearch()
+}
+
 function resetSearch() {
   searchKeyword.value = ''
   filteredData.value = []
@@ -283,18 +288,6 @@ function resetSearch() {
   hasMore.value = true
   currentPage.value = 1
   renderPage(1)
-  if (navOpen.value) toggleNav()
-}
-
-// ============================================================
-// 导航
-// ============================================================
-function toggleNav() {
-  navOpen.value = !navOpen.value
-}
-
-function closeNav() {
-  // 鼠标离开时由 CSS 控制
 }
 
 // ============================================================
@@ -327,12 +320,14 @@ function openPreview(item) {
   previewItem.value = allData.value[previewIndex.value]
   previewUrl.value = getImageUrl(previewItem.value, 'fhd')
   previewVisible.value = true
+  toolbarVisible.value = true
+  dropdownOpen.value = false
   document.body.style.overflow = 'hidden'
 
   // 更新标题
   updateTitle(previewItem.value)
 
-  // 更新背景
+  // 更新背景 - 半透明
   const overlay = document.querySelector('.preview-overlay')
   if (overlay) {
     overlay.style.setProperty('--bg-url', 'url(' + previewUrl.value + ')')
@@ -341,6 +336,7 @@ function openPreview(item) {
 
 function closePreview() {
   previewVisible.value = false
+  toolbarVisible.value = true
   document.body.style.overflow = 'auto'
   document.title = '必应壁纸 | 每日一图，带你领略世界之美'
 }
@@ -388,8 +384,19 @@ function onPreviewLoad() {
   // 图片加载完成
 }
 
+// ★★★ 点击图片切换工具栏显隐 ★★★
+function toggleToolbar() {
+  toolbarVisible.value = !toolbarVisible.value
+}
+
+// ★★★ 下拉菜单切换 ★★★
+function toggleDropdown(e) {
+  e.stopPropagation()
+  dropdownOpen.value = !dropdownOpen.value
+}
+
 // ============================================================
-// 下载
+// ★★★ 下载功能 - 完整修复 ★★★
 // ============================================================
 function getDownloadFileName(item, resolution) {
   const urlbase = item.urlbase || ''
@@ -424,11 +431,79 @@ function getDownloadFileName(item, resolution) {
   return 'wallpaper_' + (item.startdate || item.date || Date.now()) + '_' + resolution + '.jpg'
 }
 
+// ★★★ 智能裁剪 - 手机比例 ★★★
+async function smartCropDownload(blob, fileName, resolution) {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    const url = URL.createObjectURL(blob)
+
+    img.onload = function() {
+      try {
+        const targetW = resolution === 'mobile_s' ? 768 : 1080
+        const targetH = resolution === 'mobile_s' ? 1280 : 1920
+
+        const imgW = img.width
+        const imgH = img.height
+        const targetRatio = targetW / targetH
+
+        // 从中心裁剪
+        let cropX, cropY, cropWidth, cropHeight
+        if (imgW / imgH > targetRatio) {
+          cropHeight = imgH
+          cropWidth = imgH * targetRatio
+          cropX = (imgW - cropWidth) / 2
+          cropY = 0
+        } else {
+          cropWidth = imgW
+          cropHeight = imgW / targetRatio
+          cropX = 0
+          cropY = (imgH - cropHeight) / 2
+        }
+
+        const canvas = document.createElement('canvas')
+        const ctx = canvas.getContext('2d')
+        canvas.width = targetW
+        canvas.height = targetH
+
+        ctx.imageSmoothingEnabled = true
+        ctx.imageSmoothingQuality = 'high'
+        ctx.drawImage(img, cropX, cropY, cropWidth, cropHeight, 0, 0, targetW, targetH)
+
+        canvas.toBlob((croppedBlob) => {
+          if (croppedBlob) {
+            downloadBlob(croppedBlob, fileName)
+            resolve()
+          } else {
+            reject('裁剪失败')
+          }
+        }, 'image/jpeg', 0.92)
+
+        URL.revokeObjectURL(url)
+      } catch (error) {
+        console.warn('裁剪失败，使用原图:', error)
+        downloadBlob(blob, fileName)
+        resolve()
+      }
+    }
+
+    img.onerror = function() {
+      downloadBlob(blob, fileName)
+      resolve()
+    }
+
+    img.src = url
+  })
+}
+
 function downloadImage(resolution) {
   if (!previewItem.value) return
   const item = previewItem.value
   const fileName = getDownloadFileName(item, resolution)
   const url = getImageUrl(item, 'uhd')
+  const isMobile = resolution === 'mobile' || resolution === 'mobile_s'
+
+  // 关闭下拉菜单
+  dropdownOpen.value = false
 
   fetch(url, { mode: 'cors' })
     .then(res => {
@@ -436,15 +511,14 @@ function downloadImage(resolution) {
       return res.blob()
     })
     .then(blob => {
-      const link = document.createElement('a')
-      link.href = URL.createObjectURL(blob)
-      link.download = fileName
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      setTimeout(() => URL.revokeObjectURL(link.href), 3000)
+      if (isMobile) {
+        return smartCropDownload(blob, fileName, resolution)
+      } else {
+        downloadBlob(blob, fileName)
+      }
     })
     .catch(() => {
+      // 备用方法
       const link = document.createElement('a')
       link.href = url
       link.download = fileName
@@ -453,6 +527,23 @@ function downloadImage(resolution) {
       link.click()
       document.body.removeChild(link)
     })
+}
+
+function downloadBlob(blob, fileName) {
+  try {
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = fileName
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    setTimeout(() => URL.revokeObjectURL(url), 3000)
+  } catch (e) {
+    const url = URL.createObjectURL(blob)
+    window.open(url, '_blank')
+    setTimeout(() => URL.revokeObjectURL(url), 10000)
+  }
 }
 
 // ============================================================
@@ -470,7 +561,6 @@ function toggleTheme() {
 function openComment() {
   commentVisible.value = true
   document.body.style.overflow = 'hidden'
-  if (navOpen.value) toggleNav()
   nextTick(() => {
     if (typeof twikoo !== 'undefined') {
       twikoo.init({
@@ -597,19 +687,18 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 .app { display: flex; flex-direction: column; width: 100%; height: 100vh; height: 100dvh; padding: 0; overflow: hidden; background: var(--bg-primary); }
 
 /* ===== 导航栏 ===== */
-.nav-toggle { position: fixed; top: 12px; left: 12px; z-index: 1001; background: var(--nav-bg); backdrop-filter: blur(8px); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); font-size: 20px; padding: 6px 12px; cursor: pointer; transition: 0.2s; line-height: 1; }
-.nav-toggle:hover { background: var(--accent-hover); border-color: rgba(79,195,247,0.3); }
-
-.navbar { position: fixed; top: 12px; left: 56px; z-index: 1000; background: var(--nav-bg); backdrop-filter: blur(16px); border: 1px solid var(--border-color); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; min-width: 200px; opacity: 0; transform: translateY(-10px) scale(0.95); transition: opacity 0.25s ease, transform 0.25s ease, visibility 0.25s ease; pointer-events: none; visibility: hidden; box-shadow: 0 8px 32px var(--shadow-color); max-width: 90vw; }
-.navbar.toggle-open { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; visibility: visible; }
+.navbar { position: fixed; top: 12px; left: 12px; z-index: 1000; background: var(--nav-bg); backdrop-filter: blur(16px); border: 1px solid var(--border-color); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; min-width: 200px; opacity: 0; transform: translateY(-10px) scale(0.95); transition: opacity 0.3s ease, transform 0.3s ease, visibility 0.3s ease; pointer-events: none; visibility: hidden; box-shadow: 0 8px 32px var(--shadow-color); max-width: 90vw; }
+.navbar:hover { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; visibility: visible; }
 .navbar-header { display: flex; justify-content: space-between; align-items: center; width: 100%; }
 .navbar .logo { color: var(--text-primary); font-size: 17px; font-weight: 300; display: flex; align-items: center; gap: 8px; }
 .navbar .logo span { color: var(--accent-color); font-weight: 600; }
 .navbar .badge { color: var(--text-secondary); font-size: 12px; }
-.navbar .search-box { display: flex; gap: 6px; width: 100%; position: relative; }
-.navbar .search-box input { flex: 1; background: var(--input-bg); border: 1px solid var(--input-border); border-radius: 6px; padding: 5px 10px; color: var(--text-primary); font-size: 13px; outline: none; transition: 0.2s; }
+.navbar .search-box { display: flex; gap: 6px; width: 100%; position: relative; align-items: center; }
+.navbar .search-box input { flex: 1; background: var(--input-bg); border: 1px solid var(--input-border); border-radius: 6px; padding: 5px 30px 5px 10px; color: var(--text-primary); font-size: 13px; outline: none; transition: 0.2s; }
 .navbar .search-box input:focus { border-color: var(--accent-color); }
 .navbar .search-box input::placeholder { color: var(--text-muted); }
+.navbar .search-box .search-clear { position: absolute; right: 36px; background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px; padding: 2px 4px; }
+.navbar .search-box .search-clear:hover { color: var(--text-primary); }
 .navbar .search-box .search-btn { background: var(--accent-hover); border: none; color: var(--accent-color); padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; transition: 0.2s; flex-shrink: 0; }
 .navbar .search-box .search-btn:hover { background: rgba(79,195,247,0.25); color: var(--text-primary); }
 .navbar .nav-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
@@ -625,8 +714,7 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 
 /* ===== 卡片 ===== */
 .card { position: relative; overflow: hidden; background: var(--bg-card); flex: 0 0 20%; aspect-ratio: 16 / 9; cursor: pointer; transition: background 0.3s ease; contain: strict; -webkit-tap-highlight-color: transparent; border-radius: 0; min-height: 0; }
-.card img { width: 100%; height: 100%; object-fit: cover; display: block; position: relative; z-index: 2; opacity: 0; transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.2, 0.9, 0.4, 1); background: var(--bg-card); -webkit-user-select: none; user-select: none; }
-.card img.loaded { opacity: 1; }
+.card img { width: 100%; height: 100%; object-fit: cover; display: block; position: relative; z-index: 2; opacity: 1; transition: transform 0.5s cubic-bezier(0.2, 0.9, 0.4, 1); background: var(--bg-card); -webkit-user-select: none; user-select: none; }
 .card:hover img { transform: scale(1.05); }
 .card .placeholder-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-size: cover; background-position: center; filter: blur(12px) brightness(0.7); transform: scale(1.04); transition: opacity 0.6s ease; z-index: 1; background-color: var(--bg-card); }
 .card .placeholder-bg.hidden { opacity: 0; }
@@ -654,13 +742,13 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 .back-to-top { position: fixed; bottom: 80px; right: 20px; z-index: 100; background: var(--pagination-bg); backdrop-filter: blur(12px); border: 1px solid var(--border-color); border-radius: 50%; width: 44px; height: 44px; color: var(--text-primary); font-size: 18px; cursor: pointer; transition: 0.3s ease; box-shadow: 0 4px 20px var(--shadow-color); display: none; align-items: center; justify-content: center; }
 .back-to-top { display: flex; }
 
-/* ===== 预览 ===== */
-.preview-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 2000; background: rgba(0,0,0,0.92); justify-content: center; align-items: center; cursor: default; -webkit-tap-highlight-color: transparent; }
+/* ===== 预览 - 半透明背景 ===== */
+.preview-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 2000; background: rgba(0,0,0,0.6); justify-content: center; align-items: center; cursor: default; -webkit-tap-highlight-color: transparent; }
 .preview-overlay.active { display: flex; }
 .preview-overlay::before { content: ''; position: fixed; top: -10px; left: -10px; right: -10px; bottom: -10px; background: center/cover no-repeat; filter: blur(30px) brightness(0.4); z-index: -1; transform: scale(1.1); transition: background-image 0.4s ease; }
 
 .preview-container { position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: default; overflow: hidden; }
-.preview-image { width: 100vw; height: 100vh; object-fit: cover; object-position: 50% 50%; border-radius: 0; box-shadow: none; background: #0d0d1a; pointer-events: auto; cursor: pointer; z-index: 5; position: relative; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; transition: object-position 0.8s cubic-bezier(0.25,0.46,0.45,0.94); }
+.preview-image { width: 100vw; height: 100vh; object-fit: cover; object-position: 50% 50%; border-radius: 0; box-shadow: none; background: transparent; pointer-events: auto; cursor: pointer; z-index: 5; position: relative; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; transition: object-position 0.8s cubic-bezier(0.25,0.46,0.45,0.94); }
 
 /* ===== 箭头 ===== */
 .arrow { position: fixed; top: 50%; transform: translateY(-50%); background: var(--glass-bg); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid var(--glass-border); color: rgba(255,255,255,0.7); font-size: 28px; padding: 18px 14px; cursor: pointer; transition: all 0.25s ease; border-radius: 12px; z-index: 10; -webkit-tap-highlight-color: transparent !important; outline: none !important; box-shadow: 0 4px 20px rgba(0,0,0,0.3); user-select: none; line-height: 1; }
@@ -671,9 +759,11 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 
 /* ===== 工具栏 ===== */
 .toolbar { position: fixed; top: 16px; right: 16px; display: flex; align-items: center; gap: 8px; z-index: 20; flex-wrap: wrap; justify-content: flex-end; transition: opacity 0.3s ease; -webkit-tap-highlight-color: transparent; }
+.toolbar.hidden { opacity: 0 !important; pointer-events: none !important; }
 .toolbar .btn { background: var(--red-btn-bg); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(220,60,60,0.25); border-radius: 10px; color: var(--red-btn-text); padding: 7px 14px; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.25s ease; display: inline-flex; align-items: center; gap: 6px; font-family: inherit; white-space: nowrap; text-decoration: none; outline: none !important; letter-spacing: 0.3px; box-shadow: 0 2px 16px var(--red-btn-shadow); }
 .toolbar .btn i { font-size: 13px; color: #fff; }
 .toolbar .btn:hover { background: var(--red-btn-hover); border-color: rgba(200,40,40,0.5); color: #fff; transform: translateY(-1px); box-shadow: 0 6px 28px rgba(220,60,60,0.35); }
+.toolbar .btn:active { transform: scale(0.96); }
 
 /* ===== 下拉菜单 ===== */
 .dropdown { position: relative; display: inline-block; }
@@ -682,8 +772,7 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 .dropdown:hover .btn i.fa-chevron-down { transform: rotate(180deg); }
 
 .dropdown-menu { display: block; position: absolute; top: calc(100% + 8px); right: 0; background: #ffffff; backdrop-filter: none; -webkit-backdrop-filter: none; border: 1px solid rgba(0,0,0,0.08); border-radius: 12px; padding: 6px 0; min-width: 180px; box-shadow: 0 12px 48px rgba(0,0,0,0.25); z-index: 30; opacity: 0; visibility: hidden; transform: translateY(-4px) scale(0.96); transition: all 0.2s cubic-bezier(0.2,0.9,0.4,1); pointer-events: none; overflow: hidden; }
-.dropdown:hover .dropdown-menu, .dropdown-menu:hover { opacity: 1; visibility: visible; transform: translateY(0) scale(1); pointer-events: auto; }
-
+.dropdown-menu.show { opacity: 1; visibility: visible; transform: translateY(0) scale(1); pointer-events: auto; }
 .dropdown-menu a { display: flex; align-items: center; gap: 10px; padding: 9px 18px; color: #1a1a2e; text-decoration: none; font-size: 13px; font-weight: 400; transition: all 0.15s ease; white-space: nowrap; cursor: pointer; letter-spacing: 0.2px; background: transparent; }
 .dropdown-menu a i { font-size: 14px; width: 18px; color: #888; transition: color 0.15s; }
 .dropdown-menu a:hover { background: #d63031; color: #ffffff; }
@@ -706,6 +795,7 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 
 /* ===== 信息面板 ===== */
 .info-panel { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%); max-width: 90%; text-align: center; pointer-events: none; text-shadow: 0 2px 20px rgba(0,0,0,0.9); z-index: 5; transition: opacity 0.3s ease; }
+.info-panel.hidden { opacity: 0 !important; pointer-events: none !important; }
 .info-panel .copyright { font-size: 20px; color: rgba(255,255,255,0.9); line-height: 1.6; font-weight: 500; letter-spacing: 0.5px; }
 .info-panel .date { font-size: 16px; color: rgba(255,255,255,0.5); margin-top: 6px; font-weight: 400; }
 .info-panel .desc { font-size: 17px; color: rgba(255,255,255,0.55); margin-top: 6px; max-width: 600px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis; line-height: 1.7; font-weight: 400; }
@@ -729,13 +819,13 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 @media (max-width: 992px) { .card { flex: 0 0 25%; } }
 @media (max-width: 768px) {
   .card { flex: 0 0 33.333%; }
-  .navbar { left: 52px; min-width: 160px; padding: 12px 14px; top: 10px; }
-  .nav-toggle { font-size: 18px; padding: 5px 10px; top: 10px; left: 10px; }
+  .navbar { left: 12px; min-width: 160px; padding: 12px 14px; top: 10px; }
   .arrow { font-size: 20px; padding: 14px 10px; }
   .arrow-left { left: 8px; }
   .arrow-right { right: 8px; }
   .toolbar { top: 12px; right: 12px; gap: 6px; }
   .toolbar .btn { font-size: 11px; padding: 5px 10px; }
+  .toolbar .btn span { display: none; }
   .info-panel .copyright { font-size: 17px; }
   .info-panel .desc { font-size: 14px; -webkit-line-clamp: 1; }
   .info-panel .date { font-size: 13px; }
