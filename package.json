@@ -1,21 +1,21 @@
 {
-	"name": "by",
-	"version": "1.0.0",
-	"private": true,
-	"scripts": {
-		"dev": "vite",
-		"build": "vite build",
-		"preview": "vite preview",
-		"update-data": "tsx ./scripts/update-data.ts"
-	},
-	"dependencies": {
-		"vue": "^3.4.0"
-	},
-	"devDependencies": {
-		"@vitejs/plugin-vue": "^5.0.0",
-		"vite": "^5.0.0",
-		"@types/node": "^18.6.3",
-		"tsx": "^3.8.0",
-		"typescript": "^4.7.4"
-	}
+  "name": "bing-wallpaper",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "update-data": "tsx ./scripts/update-data.ts"
+  },
+  "dependencies": {
+    "vue": "^3.4.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.0",
+    "vite": "^5.0.0",
+    "@types/node": "^18.6.3",
+    "tsx": "^3.8.0",
+    "typescript": "^4.7.4"
+  }
 }
