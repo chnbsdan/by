@@ -2,7 +2,7 @@ name: 'Update Images Data'
 
 on:
   schedule:
-    - cron: '0 20 * * *'   # UTC 20:00 = 北京时间 次日 04:00
+    - cron: '0 20 * * *'
   workflow_dispatch:
 
 permissions:
@@ -14,20 +14,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 8
-
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'pnpm'
 
       - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
+        run: npm install
 
       - name: Update Data
-        run: pnpm run update-data
+        run: npm run update-data
 
       - name: Commit and Push
         run: |
