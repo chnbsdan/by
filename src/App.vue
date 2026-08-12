@@ -1,12 +1,12 @@
 <template>
   <div class="app">
-    <!-- ★★★ 汉堡按钮 ★★★ -->
-    <button class="nav-toggle" @click="toggleNav">
-      <i :class="navOpen ? 'fas fa-times' : 'fas fa-bars'"></i>
+    <!-- ★★★ 汉堡按钮 - 鼠标悬停显示导航 ★★★ -->
+    <button class="nav-toggle" @mouseenter="navOpen = true" @mouseleave="navOpen = false">
+      <i class="fas fa-bars"></i>
     </button>
 
-    <!-- 导航栏 -->
-    <div class="navbar" :class="{ 'toggle-open': navOpen }" @mouseleave="closeNav">
+    <!-- ★★★ 导航栏 - 鼠标悬停保持显示 ★★★ -->
+    <div class="navbar" :class="{ 'toggle-open': navOpen }" @mouseenter="navOpen = true" @mouseleave="navOpen = false">
       <div class="navbar-header">
         <div class="logo">
           <img src="/favicon.ico" alt="Logo" style="width:24px;height:24px;border-radius:4px;" />
@@ -69,8 +69,9 @@
       <!-- ★★★ 工具栏 - 点击图片切换显隐 ★★★ -->
       <div class="toolbar" :class="{ hidden: !toolbarVisible }">
         <a href="/" class="btn"><i class="fas fa-home"></i> <span>首页</span></a>
+        <!-- ★★★ 下拉菜单 - 悬停显示，点击选择不隐藏 ★★★ -->
         <div class="dropdown" @mouseenter="dropdownOpen = true" @mouseleave="dropdownOpen = false">
-          <button class="btn"><i class="fas fa-download"></i> <span>下载</span> <i class="fas fa-chevron-down"></i></button>
+          <button class="btn" @click.stop="dropdownOpen = !dropdownOpen"><i class="fas fa-download"></i> <span>下载</span> <i class="fas fa-chevron-down"></i></button>
           <div class="dropdown-menu" :class="{ show: dropdownOpen }">
             <a href="#" @click.prevent="downloadImage('4k')"><i class="fas fa-star"></i> 4K (UHD原图)</a>
             <a href="#" @click.prevent="downloadImage('fhd')"><i class="fas fa-desktop"></i> 全高清 (1920×1080)</a>
@@ -100,14 +101,16 @@
       </div>
     </div>
 
-    <!-- 评论弹窗 -->
+    <!-- ★★★ 评论弹窗 ★★★ -->
     <div v-if="commentVisible" class="comment-overlay active" @click.self="closeComment">
       <div class="comment-modal">
         <div class="comment-header">
           <h2><i class="fas fa-comment-dots"></i> 留言反馈</h2>
           <button class="close-btn" @click="closeComment"><i class="fas fa-times"></i></button>
         </div>
-        <div class="comment-body"><div id="tcomment"></div></div>
+        <div class="comment-body" id="commentBody">
+          <div id="tcomment"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -295,12 +298,6 @@ function resetSearch() {
 // ============================================================
 function toggleNav() {
   navOpen.value = !navOpen.value
-}
-
-function closeNav() {
-  if (navOpen.value) {
-    navOpen.value = false
-  }
 }
 
 // ============================================================
@@ -503,6 +500,7 @@ function downloadImage(resolution) {
   const url = getImageUrl(item, 'uhd')
   const isMobile = resolution === 'mobile' || resolution === 'mobile_s'
 
+  // 点击下载后关闭下拉菜单
   dropdownOpen.value = false
 
   fetch(url, { mode: 'cors' })
@@ -555,20 +553,28 @@ function toggleTheme() {
 }
 
 // ============================================================
-// 评论
+// ★★★ 评论 - 修复加载 ★★★
 // ============================================================
 function openComment() {
   commentVisible.value = true
   document.body.style.overflow = 'hidden'
   if (navOpen.value) toggleNav()
+  
+  // 延迟加载 Twikoo
   nextTick(() => {
-    if (typeof twikoo !== 'undefined') {
-      twikoo.init({
-        envId: 'https://twikoo.hangdn.net',
-        el: '#tcomment',
-        lang: 'zh-CN',
-      })
+    const loadTwikoo = () => {
+      if (typeof twikoo !== 'undefined') {
+        twikoo.init({
+          envId: 'https://twikoo.hangdn.net',
+          el: '#tcomment',
+          lang: 'zh-CN',
+        })
+      } else {
+        // 如果 twikoo 还没加载，等待后重试
+        setTimeout(loadTwikoo, 500)
+      }
     }
+    loadTwikoo()
   })
 }
 
@@ -769,11 +775,10 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 .toolbar .btn:hover { background: var(--red-btn-hover); border-color: rgba(200,40,40,0.5); color: #fff; transform: translateY(-1px); box-shadow: 0 6px 28px rgba(220,60,60,0.35); }
 .toolbar .btn:active { transform: scale(0.96); }
 
-/* ===== 下拉菜单 ===== */
+/* ===== 下拉菜单 - 悬停显示 ===== */
 .dropdown { position: relative; display: inline-block; }
 .dropdown .btn { padding-right: 10px; }
 .dropdown .btn i.fa-chevron-down { font-size: 10px; margin-left: 2px; opacity: 0.9; transition: transform 0.25s ease; }
-.dropdown:hover .btn i.fa-chevron-down { transform: rotate(180deg); }
 
 .dropdown-menu { display: block; position: absolute; top: calc(100% + 8px); right: 0; background: #ffffff; backdrop-filter: none; -webkit-backdrop-filter: none; border: 1px solid rgba(0,0,0,0.08); border-radius: 12px; padding: 6px 0; min-width: 180px; box-shadow: 0 12px 48px rgba(0,0,0,0.25); z-index: 30; opacity: 0; visibility: hidden; transform: translateY(-4px) scale(0.96); transition: all 0.2s cubic-bezier(0.2,0.9,0.4,1); pointer-events: none; overflow: hidden; }
 .dropdown-menu.show { opacity: 1; visibility: visible; transform: translateY(0) scale(1); pointer-events: auto; }
