@@ -1,11 +1,11 @@
 <template>
   <div class="app">
-    <!-- ★★★ 汉堡按钮 - 鼠标悬停显示导航 ★★★ -->
+    <!-- ★★★ 汉堡按钮 ★★★ -->
     <button class="nav-toggle" @mouseenter="navOpen = true" @mouseleave="navOpen = false">
       <i class="fas fa-bars"></i>
     </button>
 
-    <!-- ★★★ 导航栏 - 鼠标悬停保持显示 ★★★ -->
+    <!-- ★★★ 导航栏 ★★★ -->
     <div class="navbar" :class="{ 'toggle-open': navOpen }" @mouseenter="navOpen = true" @mouseleave="navOpen = false">
       <div class="navbar-header">
         <div class="logo">
@@ -30,27 +30,47 @@
       </div>
     </div>
 
-    <!-- 网格 -->
+    <!-- ★★★ 网格 ★★★ -->
     <div class="grid" ref="gridRef" @scroll="checkScroll">
+      <!-- ★★★ 加载中状态（首次加载） ★★★ -->
+      <div v-if="loading && displayData.length === 0" class="loading-state">
+        <div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i></div>
+        <div class="loading-text">壁纸加载中...</div>
+      </div>
+
+      <!-- ★★★ 卡片列表 ★★★ -->
       <div v-for="item in displayData" :key="item.startdate || item.date" class="card" @click="openPreview(item)">
         <div class="placeholder-bg" :style="{ backgroundImage: 'url(' + getThumbUrl(item) + ')' }" :class="{ hidden: item._loaded }"></div>
-        <img :src="getThumbUrl(item)" :alt="item.copyright || item.date" loading="lazy" crossorigin="anonymous" @load="item._loaded = true" @error="item._loaded = true" :class="{ loaded: item._loaded }" />
+        <img 
+          :src="getThumbUrl(item)" 
+          :alt="item.copyright || item.date" 
+          loading="lazy" 
+          crossorigin="anonymous" 
+          @load="item._loaded = true; handleCardImageLoad(item, $event)" 
+          @error="item._loaded = true"
+          :class="{ loaded: item._loaded }"
+        />
         <div class="info">
           <div class="date">{{ item.startdate || item.date }}</div>
           <div class="title">{{ item.title || item.copyright || '无标题' }}</div>
         </div>
       </div>
 
-      <div v-if="loading" class="loading-indicator"><i class="fas fa-spinner"></i> 加载更多...</div>
+      <!-- ★★★ 加载更多 ★★★ -->
+      <div v-if="loadingMore" class="loading-indicator"><i class="fas fa-spinner fa-spin"></i> 加载更多...</div>
+
+      <!-- ★★★ 全部加载完成 ★★★ -->
       <div v-if="!hasMore && displayData.length > 0" class="footer-end">
         <div class="footer-line"></div>
         <div class="footer-icon"><i class="fas fa-check-circle"></i></div>
         <div class="footer-text">已全部加载完成 · 共 {{ allData.length }} 张壁纸</div>
         <div class="footer-sub">— 本站由小史先生维护，感谢使用 Bing Wallpaper —</div>
       </div>
-      <div v-if="displayData.length === 0 && !loading" class="empty">
-        <div class="icon"><i class="fas fa-image"></i></div>
-        <div>暂无壁纸数据</div>
+
+      <!-- ★★★ 空状态（搜索无结果） ★★★ -->
+      <div v-if="displayData.length === 0 && !loading && !loadingMore && allData.length > 0" class="empty">
+        <div class="icon"><i class="fas fa-search"></i></div>
+        <div>没有匹配 "{{ searchKeyword }}" 的壁纸</div>
       </div>
     </div>
 
@@ -66,10 +86,8 @@
         <img ref="previewImg" class="preview-image" :src="previewUrl" alt="预览" crossorigin="anonymous" @load="onPreviewLoad" @click="toggleToolbar" />
       </div>
 
-      <!-- ★★★ 工具栏 - 点击图片切换显隐 ★★★ -->
       <div class="toolbar" :class="{ hidden: !toolbarVisible }">
         <a href="/" class="btn"><i class="fas fa-home"></i> <span>首页</span></a>
-        <!-- ★★★ 下拉菜单 - 悬停显示，点击选择不隐藏 ★★★ -->
         <div class="dropdown" @mouseenter="dropdownOpen = true" @mouseleave="dropdownOpen = false">
           <button class="btn" @click.stop="dropdownOpen = !dropdownOpen"><i class="fas fa-download"></i> <span>下载</span> <i class="fas fa-chevron-down"></i></button>
           <div class="dropdown-menu" :class="{ show: dropdownOpen }">
@@ -101,16 +119,14 @@
       </div>
     </div>
 
-    <!-- ★★★ 评论弹窗 ★★★ -->
+    <!-- 评论弹窗 -->
     <div v-if="commentVisible" class="comment-overlay active" @click.self="closeComment">
       <div class="comment-modal">
         <div class="comment-header">
           <h2><i class="fas fa-comment-dots"></i> 留言反馈</h2>
           <button class="close-btn" @click="closeComment"><i class="fas fa-times"></i></button>
         </div>
-        <div class="comment-body" id="commentBody">
-          <div id="tcomment"></div>
-        </div>
+        <div class="comment-body" id="commentBody"><div id="tcomment"></div></div>
       </div>
     </div>
   </div>
@@ -120,6 +136,191 @@
 import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
 
 // ============================================================
+// ★★★ 智能主体检测类 ★★★
+// ============================================================
+class SmartSubjectDetector {
+  constructor() {
+    console.log('🧠 智能主体检测器已初始化')
+  }
+
+  async detectMainSubject(imageElement) {
+    const imgWidth = imageElement.naturalWidth || imageElement.width
+    const imgHeight = imageElement.naturalHeight || imageElement.height
+    if (imgWidth === 0 || imgHeight === 0) return null
+
+    try {
+      const canvas = document.createElement('canvas')
+      const ctx = canvas.getContext('2d', { willReadFrequently: true })
+      const maxSize = 400
+      let scale = Math.min(1, maxSize / Math.max(imgWidth, imgHeight))
+      canvas.width = Math.floor(imgWidth * scale)
+      canvas.height = Math.floor(imgHeight * scale)
+      ctx.drawImage(imageElement, 0, 0, canvas.width, canvas.height)
+
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+      const data = imageData.data
+
+      const saliency = this.computeSaliencyMap(data, canvas.width, canvas.height)
+      const bestRegion = this.findBestRegion(saliency, canvas.width, canvas.height)
+
+      if (bestRegion) {
+        return {
+          x: bestRegion.x / scale,
+          y: bestRegion.y / scale,
+          width: bestRegion.width / scale,
+          height: bestRegion.height / scale,
+          type: 'salient'
+        }
+      }
+      return null
+    } catch (e) {
+      return null
+    }
+  }
+
+  computeSaliencyMap(data, width, height) {
+    const saliency = new Float32Array(width * height)
+    const windowSize = Math.min(30, Math.floor(Math.min(width, height) * 0.15))
+    const halfWindow = Math.floor(windowSize / 2)
+
+    for (let y = halfWindow; y < height - halfWindow; y += 2) {
+      for (let x = halfWindow; x < width - halfWindow; x += 2) {
+        const idx = (y * width + x) * 4
+        const centerGray = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2]
+
+        let sum = 0, count = 0
+        for (let dy = -halfWindow; dy <= halfWindow; dy += 2) {
+          for (let dx = -halfWindow; dx <= halfWindow; dx += 2) {
+            if (dx === 0 && dy === 0) continue
+            const ni = ((y + dy) * width + (x + dx)) * 4
+            const ngray = 0.299 * data[ni] + 0.587 * data[ni + 1] + 0.114 * data[ni + 2]
+            sum += ngray
+            count++
+          }
+        }
+        const avgGray = sum / count
+        const contrast = Math.abs(centerGray - avgGray)
+        const colorVar = this.calculateColorVariance(data, width, height, x, y, 3)
+        saliency[y * width + x] = contrast * 0.7 + colorVar * 0.3
+      }
+    }
+    return this.gaussianBlur(saliency, width, height, 3)
+  }
+
+  calculateColorVariance(data, width, height, cx, cy, radius) {
+    let sum = 0, sumSq = 0, count = 0
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        const x = cx + dx, y = cy + dy
+        if (x < 0 || x >= width || y < 0 || y >= height) continue
+        const idx = (y * width + x) * 4
+        const gray = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2]
+        sum += gray
+        sumSq += gray * gray
+        count++
+      }
+    }
+    if (count === 0) return 0
+    const mean = sum / count
+    return sumSq / count - mean * mean
+  }
+
+  gaussianBlur(data, width, height, radius) {
+    const result = new Float32Array(data.length)
+    const kernel = this.gaussianKernel(radius)
+    const half = Math.floor(radius / 2)
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        let sum = 0, weightSum = 0
+        for (let ky = -half; ky <= half; ky++) {
+          for (let kx = -half; kx <= half; kx++) {
+            const px = x + kx, py = y + ky
+            if (px < 0 || px >= width || py < 0 || py >= height) continue
+            const weight = kernel[ky + half][kx + half]
+            sum += data[py * width + px] * weight
+            weightSum += weight
+          }
+        }
+        result[y * width + x] = weightSum > 0 ? sum / weightSum : 0
+      }
+    }
+    return result
+  }
+
+  gaussianKernel(size) {
+    const kernel = []
+    const sigma = size / 3
+    let sum = 0
+    for (let y = 0; y < size; y++) {
+      kernel[y] = []
+      for (let x = 0; x < size; x++) {
+        const dx = x - Math.floor(size / 2)
+        const dy = y - Math.floor(size / 2)
+        const value = Math.exp(-(dx * dx + dy * dy) / (2 * sigma * sigma))
+        kernel[y][x] = value
+        sum += value
+      }
+    }
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        kernel[y][x] /= sum
+      }
+    }
+    return kernel
+  }
+
+  findBestRegion(saliency, width, height) {
+    const regionSize = Math.min(120, Math.floor(Math.min(width, height) * 0.35))
+    const step = Math.max(5, Math.floor(regionSize / 5))
+    let maxScore = -Infinity
+    let bestX = 0, bestY = 0
+
+    for (let y = 0; y <= height - regionSize; y += step) {
+      for (let x = 0; x <= width - regionSize; x += step) {
+        let score = 0, count = 0
+        for (let dy = 0; dy < regionSize; dy += 2) {
+          for (let dx = 0; dx < regionSize; dx += 2) {
+            score += saliency[(y + dy) * width + (x + dx)]
+            count++
+          }
+        }
+        score = count > 0 ? score / count : 0
+        const cx = x + regionSize / 2
+        const cy = y + regionSize / 2
+        const distFromCenter = Math.sqrt(
+          Math.pow((cx / width) - 0.5, 2) +
+          Math.pow((cy / height) - 0.5, 2)
+        )
+        score *= (1 + (1 - distFromCenter) * 0.4)
+        if (score > maxScore) {
+          maxScore = score
+          bestX = x
+          bestY = y
+        }
+      }
+    }
+    if (maxScore > 0) {
+      return { x: bestX, y: bestY, width: regionSize, height: regionSize, score: maxScore }
+    }
+    return null
+  }
+
+  async getSmartPosition(imageElement) {
+    const subject = await this.detectMainSubject(imageElement)
+    if (!subject) {
+      return { x: 50, y: 50 }
+    }
+    const imgWidth = imageElement.naturalWidth || imageElement.width
+    const imgHeight = imageElement.naturalHeight || imageElement.height
+    const centerX = (subject.x + subject.width / 2) / imgWidth * 100
+    const centerY = (subject.y + subject.height / 2) / imgHeight * 100
+    const clampedX = Math.max(25, Math.min(75, centerX))
+    const clampedY = Math.max(25, Math.min(75, centerY))
+    return { x: clampedX, y: clampedY }
+  }
+}
+
+// ============================================================
 // 状态
 // ============================================================
 const allData = ref([])
@@ -127,7 +328,8 @@ const filteredData = ref([])
 const displayData = ref([])
 const currentPage = ref(1)
 const PAGE_SIZE = 30
-const loading = ref(false)
+const loading = ref(true)  // ★★★ 默认 true，显示加载状态 ★★★
+const loadingMore = ref(false)
 const hasMore = ref(true)
 const searchKeyword = ref('')
 const theme = ref('dark')
@@ -147,20 +349,16 @@ const dropdownOpen = ref(false)
 // 评论
 const commentVisible = ref(false)
 
+// 检测器
+const detector = new SmartSubjectDetector()
+
 // ============================================================
-// ★★★ 工具函数 - 兼容历史和最新数据 ★★★
+// 工具函数
 // ============================================================
 function getImageUrl(item, resolution) {
   if (!item) return ''
-
-  if (item.isHistory) {
-    return item.urlbase || ''
-  }
-
-  if (item.urlbase && item.urlbase.startsWith('http')) {
-    return item.urlbase
-  }
-
+  if (item.isHistory) return item.urlbase || ''
+  if (item.urlbase && item.urlbase.startsWith('http')) return item.urlbase
   const resMap = {
     'thumb': '_400x240.jpg',
     'hd': '_1920x1200.jpg',
@@ -174,22 +372,33 @@ function getImageUrl(item, resolution) {
 
 function getThumbUrl(item) {
   if (!item) return ''
-
-  if (item.isHistory) {
-    return item.thumb || item.urlbase || ''
-  }
-
-  if (item.urlbase && item.urlbase.startsWith('http')) {
-    return item.urlbase
-  }
-
+  if (item.isHistory) return item.thumb || item.urlbase || ''
+  if (item.urlbase && item.urlbase.startsWith('http')) return item.urlbase
   return 'https://www.bing.com' + (item.urlbase || '') + '_400x240.jpg'
+}
+
+// ★★★ 卡片缩略图智能居中 ★★★
+function handleCardImageLoad(item, event) {
+  const img = event.target
+  if (!img) return
+  // 只对移动端处理（宽度小于 768px）
+  if (window.innerWidth > 768) return
+  
+  detector.detectMainSubject(img).then(subject => {
+    if (subject) {
+      const imgWidth = img.naturalWidth || img.width
+      const centerX = (subject.x + subject.width / 2) / imgWidth * 100
+      const clampedX = Math.max(15, Math.min(85, centerX))
+      img.style.objectPosition = clampedX + '% 50%'
+    }
+  }).catch(() => {})
 }
 
 // ============================================================
 // 加载数据
 // ============================================================
 async function loadData() {
+  loading.value = true
   try {
     const res = await fetch('/json/data.json?t=' + Date.now(), {
       headers: {
@@ -214,6 +423,8 @@ async function loadData() {
     console.log('✅ 加载数据成功，共 ' + allData.value.length + ' 条')
   } catch (err) {
     console.error('加载失败:', err)
+  } finally {
+    loading.value = false
   }
 }
 
@@ -235,18 +446,18 @@ function renderPage(page) {
   }
 
   displayData.value = [...displayData.value, ...items]
-  loading.value = false
+  loadingMore.value = false
 }
 
 function loadMore() {
-  if (loading.value || !hasMore.value) return
+  if (loadingMore.value || !hasMore.value) return
   const data = filteredData.value.length > 0 ? filteredData.value : allData.value
   const totalPages = Math.ceil(data.length / PAGE_SIZE)
   if (currentPage.value >= totalPages) {
     hasMore.value = false
     return
   }
-  loading.value = true
+  loadingMore.value = true
   const nextPage = currentPage.value + 1
   renderPage(nextPage)
 }
@@ -261,6 +472,7 @@ function doSearch() {
     displayData.value = []
     hasMore.value = true
     currentPage.value = 1
+    loadingMore.value = false
     renderPage(1)
     return
   }
@@ -275,6 +487,7 @@ function doSearch() {
   displayData.value = []
   hasMore.value = true
   currentPage.value = 1
+  loadingMore.value = false
   renderPage(1)
 }
 
@@ -289,8 +502,9 @@ function resetSearch() {
   displayData.value = []
   hasMore.value = true
   currentPage.value = 1
+  loadingMore.value = false
   renderPage(1)
-  if (navOpen.value) toggleNav()
+  if (navOpen.value) navOpen.value = false
 }
 
 // ============================================================
@@ -307,7 +521,6 @@ function checkScroll() {
   const el = gridRef.value
   if (!el) return
   showBackToTop.value = el.scrollTop > 500
-
   if (el.scrollHeight - el.scrollTop - el.clientHeight < 300) {
     loadMore()
   }
@@ -333,9 +546,7 @@ function openPreview(item) {
   toolbarVisible.value = true
   dropdownOpen.value = false
   document.body.style.overflow = 'hidden'
-
   updateTitle(previewItem.value)
-
   const overlay = document.querySelector('.preview-overlay')
   if (overlay) {
     overlay.style.setProperty('--bg-url', 'url(' + previewUrl.value + ')')
@@ -389,13 +600,12 @@ function updateTitle(item) {
 
 function onPreviewLoad() {}
 
-// ★★★ 点击图片切换工具栏显隐 ★★★
 function toggleToolbar() {
   toolbarVisible.value = !toolbarVisible.value
 }
 
 // ============================================================
-// ★★★ 下载功能 ★★★
+// 下载
 // ============================================================
 function getDownloadFileName(item, resolution) {
   const urlbase = item.urlbase || ''
@@ -430,9 +640,8 @@ function getDownloadFileName(item, resolution) {
   return 'wallpaper_' + (item.startdate || item.date || Date.now()) + '_' + resolution + '.jpg'
 }
 
-// ★★★ 智能裁剪 - 手机比例 ★★★
 async function smartCropDownload(blob, fileName, resolution) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const img = new Image()
     const url = URL.createObjectURL(blob)
 
@@ -472,13 +681,13 @@ async function smartCropDownload(blob, fileName, resolution) {
             downloadBlob(croppedBlob, fileName)
             resolve()
           } else {
-            reject('裁剪失败')
+            downloadBlob(blob, fileName)
+            resolve()
           }
         }, 'image/jpeg', 0.92)
 
         URL.revokeObjectURL(url)
       } catch (error) {
-        console.warn('裁剪失败，使用原图:', error)
         downloadBlob(blob, fileName)
         resolve()
       }
@@ -500,7 +709,6 @@ function downloadImage(resolution) {
   const url = getImageUrl(item, 'uhd')
   const isMobile = resolution === 'mobile' || resolution === 'mobile_s'
 
-  // 点击下载后关闭下拉菜单
   dropdownOpen.value = false
 
   fetch(url, { mode: 'cors' })
@@ -553,14 +761,13 @@ function toggleTheme() {
 }
 
 // ============================================================
-// ★★★ 评论 - 修复加载 ★★★
+// 评论
 // ============================================================
 function openComment() {
   commentVisible.value = true
   document.body.style.overflow = 'hidden'
-  if (navOpen.value) toggleNav()
+  if (navOpen.value) navOpen.value = false
   
-  // 延迟加载 Twikoo
   nextTick(() => {
     const loadTwikoo = () => {
       if (typeof twikoo !== 'undefined') {
@@ -570,7 +777,6 @@ function openComment() {
           lang: 'zh-CN',
         })
       } else {
-        // 如果 twikoo 还没加载，等待后重试
         setTimeout(loadTwikoo, 500)
       }
     }
@@ -721,24 +927,111 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 .grid::-webkit-scrollbar-thumb { background: var(--accent-color); border-radius: 3px; }
 .grid::-webkit-scrollbar-thumb:hover { background: #81d4fa; }
 
-/* ===== 卡片 ===== */
-.card { position: relative; overflow: hidden; background: var(--bg-card); flex: 0 0 20%; aspect-ratio: 16 / 9; cursor: pointer; transition: background 0.3s ease; contain: strict; -webkit-tap-highlight-color: transparent; border-radius: 0; min-height: 0; }
-.card img { width: 100%; height: 100%; object-fit: cover; display: block; position: relative; z-index: 2; opacity: 0; transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.2, 0.9, 0.4, 1); background: var(--bg-card); -webkit-user-select: none; user-select: none; }
+/* ★★★ 加载状态 ★★★ */
+.loading-state {
+  flex: 0 0 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+  color: var(--text-secondary);
+}
+.loading-state .loading-spinner { font-size: 40px; color: var(--accent-color); margin-bottom: 16px; }
+.loading-state .loading-spinner i { animation: spin 1s linear infinite; }
+.loading-state .loading-text { font-size: 16px; color: var(--text-muted); }
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+/* ===== 卡片 - 响应式宽高比 ===== */
+.card { 
+  position: relative; 
+  overflow: hidden; 
+  background: var(--bg-card); 
+  flex: 0 0 50%; 
+  cursor: pointer; 
+  transition: background 0.3s ease; 
+  contain: strict; 
+  -webkit-tap-highlight-color: transparent; 
+  border-radius: 0; 
+  min-height: 0; 
+  aspect-ratio: 3 / 5; 
+}
+@media (min-width: 768px) { 
+  .card { flex: 0 0 20%; aspect-ratio: 16 / 9; } 
+}
+@media (max-width: 767px) { 
+  .card { flex: 0 0 50%; aspect-ratio: 3 / 5; } 
+}
+
+.card img { 
+  width: 100%; 
+  height: 100%; 
+  object-fit: cover; 
+  object-position: 50% 50%;
+  display: block; 
+  position: relative; 
+  z-index: 2; 
+  opacity: 0; 
+  transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.2, 0.9, 0.4, 1); 
+  background: var(--bg-card); 
+  -webkit-user-select: none; 
+  user-select: none; 
+}
 .card img.loaded { opacity: 1; }
 .card:hover img { transform: scale(1.05); }
-.card .placeholder-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-size: cover; background-position: center; filter: blur(12px) brightness(0.7); transform: scale(1.04); transition: opacity 0.6s ease; z-index: 1; background-color: var(--bg-card); }
+
+.card .placeholder-bg { 
+  position: absolute; 
+  top: 0; left: 0; 
+  width: 100%; height: 100%; 
+  background-size: cover; 
+  background-position: center; 
+  filter: blur(12px) brightness(0.7); 
+  transform: scale(1.04); 
+  transition: opacity 0.6s ease; 
+  z-index: 1; 
+  background-color: var(--bg-card); 
+}
 .card .placeholder-bg.hidden { opacity: 0; }
-.card .info { position: absolute; bottom: 0; left: 0; right: 0; z-index: 3; padding: 14px 12px 10px; background: linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 100%); color: #fff; opacity: 0; transition: opacity 0.25s ease; pointer-events: none; }
+
+.card .info { 
+  position: absolute; 
+  bottom: 0; left: 0; right: 0; 
+  z-index: 3; 
+  padding: 14px 12px 10px; 
+  background: linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 100%); 
+  color: #fff; 
+  opacity: 0; 
+  transition: opacity 0.25s ease; 
+  pointer-events: none; 
+}
 .card:hover .info { opacity: 1; }
 .card .info .date { font-size: 15px; color: rgba(255,255,255,0.8); font-weight: 600; }
 .card .info .title { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* ===== 加载状态 ===== */
-.loading-indicator { flex: 0 0 100%; text-align: center; padding: 20px 0 30px; color: var(--text-muted); font-size: 14px; }
+/* ===== 加载更多 ===== */
+.loading-indicator { 
+  flex: 0 0 100%; 
+  text-align: center; 
+  padding: 20px 0 30px; 
+  color: var(--text-muted); 
+  font-size: 14px; 
+}
 .loading-indicator i { animation: spin 1s linear infinite; display: inline-block; margin-right: 8px; }
-@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-.footer-end { flex: 0 0 100%; text-align: center; padding: 30px 20px 40px; color: var(--text-faint); font-size: 13px; display: flex; flex-direction: column; align-items: center; gap: 10px; opacity: 0; animation: fadeInUp 0.6s ease forwards; }
+.footer-end { 
+  flex: 0 0 100%; 
+  text-align: center; 
+  padding: 30px 20px 40px; 
+  color: var(--text-faint); 
+  font-size: 13px; 
+  display: flex; 
+  flex-direction: column; 
+  align-items: center; 
+  gap: 10px; 
+  opacity: 0; 
+  animation: fadeInUp 0.6s ease forwards; 
+}
 .footer-end .footer-line { width: 60px; height: 1px; background: var(--text-faint); border: none; margin: 0 auto; }
 .footer-end .footer-icon { font-size: 24px; color: var(--text-faint); opacity: 0.5; }
 .footer-end .footer-text { color: var(--text-muted); font-size: 13px; letter-spacing: 0.5px; }
@@ -746,43 +1039,195 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 .footer-end .footer-sub { color: var(--text-faint); font-size: 11px; margin-top: 2px; }
 @keyframes fadeInUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
 
-.empty { flex: 0 0 100%; text-align: center; padding: 80px 20px; color: var(--text-secondary); }
+.empty { 
+  flex: 0 0 100%; 
+  text-align: center; 
+  padding: 80px 20px; 
+  color: var(--text-secondary); 
+}
 .empty .icon { font-size: 40px; margin-bottom: 10px; }
 
-.back-to-top { position: fixed; bottom: 80px; right: 20px; z-index: 100; background: var(--pagination-bg); backdrop-filter: blur(12px); border: 1px solid var(--border-color); border-radius: 50%; width: 44px; height: 44px; color: var(--text-primary); font-size: 18px; cursor: pointer; transition: 0.3s ease; box-shadow: 0 4px 20px var(--shadow-color); display: none; align-items: center; justify-content: center; }
+.back-to-top { 
+  position: fixed; 
+  bottom: 80px; 
+  right: 20px; 
+  z-index: 100; 
+  background: var(--pagination-bg); 
+  backdrop-filter: blur(12px); 
+  border: 1px solid var(--border-color); 
+  border-radius: 50%; 
+  width: 44px; 
+  height: 44px; 
+  color: var(--text-primary); 
+  font-size: 18px; 
+  cursor: pointer; 
+  transition: 0.3s ease; 
+  box-shadow: 0 4px 20px var(--shadow-color); 
+  display: none; 
+  align-items: center; 
+  justify-content: center; 
+}
 .back-to-top { display: flex; }
 
-/* ===== 预览 - 半透明背景 ===== */
-.preview-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 2000; background: rgba(0,0,0,0.6); justify-content: center; align-items: center; cursor: default; -webkit-tap-highlight-color: transparent; }
+/* ===== 预览 ===== */
+.preview-overlay { 
+  display: none; 
+  position: fixed; 
+  top: 0; left: 0; right: 0; bottom: 0; 
+  z-index: 2000; 
+  background: rgba(0,0,0,0.6); 
+  justify-content: center; 
+  align-items: center; 
+  cursor: default; 
+  -webkit-tap-highlight-color: transparent; 
+}
 .preview-overlay.active { display: flex; }
-.preview-overlay::before { content: ''; position: fixed; top: -10px; left: -10px; right: -10px; bottom: -10px; background: center/cover no-repeat; filter: blur(30px) brightness(0.4); z-index: -1; transform: scale(1.1); transition: background-image 0.4s ease; }
+.preview-overlay::before { 
+  content: ''; 
+  position: fixed; 
+  top: -10px; left: -10px; right: -10px; bottom: -10px; 
+  background: center/cover no-repeat; 
+  filter: blur(30px) brightness(0.4); 
+  z-index: -1; 
+  transform: scale(1.1); 
+  transition: background-image 0.4s ease; 
+}
 
-.preview-container { position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: default; overflow: hidden; }
-.preview-image { width: 100vw; height: 100vh; object-fit: cover; object-position: 50% 50%; border-radius: 0; box-shadow: none; background: transparent; pointer-events: auto; cursor: pointer; z-index: 5; position: relative; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; transition: object-position 0.8s cubic-bezier(0.25,0.46,0.45,0.94); }
+.preview-container { 
+  position: relative; 
+  width: 100%; 
+  height: 100%; 
+  display: flex; 
+  flex-direction: column; 
+  align-items: center; 
+  justify-content: center; 
+  cursor: default; 
+  overflow: hidden; 
+}
+.preview-image { 
+  width: 100vw; 
+  height: 100vh; 
+  object-fit: cover; 
+  object-position: 50% 50%; 
+  border-radius: 0; 
+  box-shadow: none; 
+  background: transparent; 
+  pointer-events: auto; 
+  cursor: pointer; 
+  z-index: 5; 
+  position: relative; 
+  -webkit-user-select: none; 
+  user-select: none; 
+  -webkit-touch-callout: none; 
+  transition: object-position 0.8s cubic-bezier(0.25,0.46,0.45,0.94); 
+}
 
 /* ===== 箭头 ===== */
-.arrow { position: fixed; top: 50%; transform: translateY(-50%); background: var(--glass-bg); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid var(--glass-border); color: rgba(255,255,255,0.7); font-size: 28px; padding: 18px 14px; cursor: pointer; transition: all 0.25s ease; border-radius: 12px; z-index: 10; -webkit-tap-highlight-color: transparent !important; outline: none !important; box-shadow: 0 4px 20px rgba(0,0,0,0.3); user-select: none; line-height: 1; }
+.arrow { 
+  position: fixed; 
+  top: 50%; 
+  transform: translateY(-50%); 
+  background: var(--glass-bg); 
+  backdrop-filter: blur(12px); 
+  -webkit-backdrop-filter: blur(12px); 
+  border: 1px solid var(--glass-border); 
+  color: rgba(255,255,255,0.7); 
+  font-size: 28px; 
+  padding: 18px 14px; 
+  cursor: pointer; 
+  transition: all 0.25s ease; 
+  border-radius: 12px; 
+  z-index: 10; 
+  -webkit-tap-highlight-color: transparent !important; 
+  outline: none !important; 
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3); 
+  user-select: none; 
+  line-height: 1; 
+}
 .arrow:hover { color: #fff; background: var(--glass-hover); border-color: rgba(255,255,255,0.25); transform: translateY(-50%) scale(1.04); }
 .arrow:active { transform: translateY(-50%) scale(0.94); }
 .arrow-left { left: 20px; }
 .arrow-right { right: 20px; }
 
 /* ===== 工具栏 ===== */
-.toolbar { position: fixed; top: 16px; right: 16px; display: flex; align-items: center; gap: 8px; z-index: 20; flex-wrap: wrap; justify-content: flex-end; transition: opacity 0.3s ease; -webkit-tap-highlight-color: transparent; }
+.toolbar { 
+  position: fixed; 
+  top: 16px; 
+  right: 16px; 
+  display: flex; 
+  align-items: center; 
+  gap: 8px; 
+  z-index: 20; 
+  flex-wrap: wrap; 
+  justify-content: flex-end; 
+  transition: opacity 0.3s ease; 
+  -webkit-tap-highlight-color: transparent; 
+}
 .toolbar.hidden { opacity: 0 !important; pointer-events: none !important; }
-.toolbar .btn { background: var(--red-btn-bg); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(220,60,60,0.25); border-radius: 10px; color: var(--red-btn-text); padding: 7px 14px; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.25s ease; display: inline-flex; align-items: center; gap: 6px; font-family: inherit; white-space: nowrap; text-decoration: none; outline: none !important; letter-spacing: 0.3px; box-shadow: 0 2px 16px var(--red-btn-shadow); }
+.toolbar .btn { 
+  background: var(--red-btn-bg); 
+  backdrop-filter: blur(12px); 
+  -webkit-backdrop-filter: blur(12px); 
+  border: 1px solid rgba(220,60,60,0.25); 
+  border-radius: 10px; 
+  color: var(--red-btn-text); 
+  padding: 7px 14px; 
+  font-size: 12px; 
+  font-weight: 500; 
+  cursor: pointer; 
+  transition: all 0.25s ease; 
+  display: inline-flex; 
+  align-items: center; 
+  gap: 6px; 
+  font-family: inherit; 
+  white-space: nowrap; 
+  text-decoration: none; 
+  outline: none !important; 
+  letter-spacing: 0.3px; 
+  box-shadow: 0 2px 16px var(--red-btn-shadow); 
+}
 .toolbar .btn i { font-size: 13px; color: #fff; }
 .toolbar .btn:hover { background: var(--red-btn-hover); border-color: rgba(200,40,40,0.5); color: #fff; transform: translateY(-1px); box-shadow: 0 6px 28px rgba(220,60,60,0.35); }
-.toolbar .btn:active { transform: scale(0.96); }
 
-/* ===== 下拉菜单 - 悬停显示 ===== */
+/* ===== 下拉菜单 ===== */
 .dropdown { position: relative; display: inline-block; }
 .dropdown .btn { padding-right: 10px; }
 .dropdown .btn i.fa-chevron-down { font-size: 10px; margin-left: 2px; opacity: 0.9; transition: transform 0.25s ease; }
 
-.dropdown-menu { display: block; position: absolute; top: calc(100% + 8px); right: 0; background: #ffffff; backdrop-filter: none; -webkit-backdrop-filter: none; border: 1px solid rgba(0,0,0,0.08); border-radius: 12px; padding: 6px 0; min-width: 180px; box-shadow: 0 12px 48px rgba(0,0,0,0.25); z-index: 30; opacity: 0; visibility: hidden; transform: translateY(-4px) scale(0.96); transition: all 0.2s cubic-bezier(0.2,0.9,0.4,1); pointer-events: none; overflow: hidden; }
+.dropdown-menu { 
+  display: block; 
+  position: absolute; 
+  top: calc(100% + 8px); 
+  right: 0; 
+  background: #ffffff; 
+  border: 1px solid rgba(0,0,0,0.08); 
+  border-radius: 12px; 
+  padding: 6px 0; 
+  min-width: 180px; 
+  box-shadow: 0 12px 48px rgba(0,0,0,0.25); 
+  z-index: 30; 
+  opacity: 0; 
+  visibility: hidden; 
+  transform: translateY(-4px) scale(0.96); 
+  transition: all 0.2s cubic-bezier(0.2,0.9,0.4,1); 
+  pointer-events: none; 
+  overflow: hidden; 
+}
 .dropdown-menu.show { opacity: 1; visibility: visible; transform: translateY(0) scale(1); pointer-events: auto; }
-.dropdown-menu a { display: flex; align-items: center; gap: 10px; padding: 9px 18px; color: #1a1a2e; text-decoration: none; font-size: 13px; font-weight: 400; transition: all 0.15s ease; white-space: nowrap; cursor: pointer; letter-spacing: 0.2px; background: transparent; }
+.dropdown-menu a { 
+  display: flex; 
+  align-items: center; 
+  gap: 10px; 
+  padding: 9px 18px; 
+  color: #1a1a2e; 
+  text-decoration: none; 
+  font-size: 13px; 
+  font-weight: 400; 
+  transition: all 0.15s ease; 
+  white-space: nowrap; 
+  cursor: pointer; 
+  background: transparent; 
+}
 .dropdown-menu a i { font-size: 14px; width: 18px; color: #888; transition: color 0.15s; }
 .dropdown-menu a:hover { background: #d63031; color: #ffffff; }
 .dropdown-menu a:hover i { color: #ffffff; }
@@ -790,7 +1235,25 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 
 /* ===== 打赏 ===== */
 .donate-qr-wrapper { position: relative; display: inline-block; }
-.donate-qr-wrapper .qr-tooltip { display: block; position: absolute; top: calc(100% + 8px); right: 0; background: var(--donate-bg); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid var(--donate-border); border-radius: 12px; padding: 14px 16px; box-shadow: 0 12px 48px rgba(0,0,0,0.5); z-index: 30; min-width: 280px; opacity: 0; visibility: hidden; transform: translateY(-4px) scale(0.96); transition: all 0.2s cubic-bezier(0.2,0.9,0.4,1); pointer-events: none; }
+.donate-qr-wrapper .qr-tooltip { 
+  display: block; 
+  position: absolute; 
+  top: calc(100% + 8px); 
+  right: 0; 
+  background: var(--donate-bg); 
+  backdrop-filter: blur(20px); 
+  border: 1px solid var(--donate-border); 
+  border-radius: 12px; 
+  padding: 14px 16px; 
+  box-shadow: 0 12px 48px rgba(0,0,0,0.5); 
+  z-index: 30; 
+  min-width: 280px; 
+  opacity: 0; 
+  visibility: hidden; 
+  transform: translateY(-4px) scale(0.96); 
+  transition: all 0.2s cubic-bezier(0.2,0.9,0.4,1); 
+  pointer-events: none; 
+}
 .donate-qr-wrapper:hover .qr-tooltip { opacity: 1; visibility: visible; transform: translateY(0) scale(1); pointer-events: auto; }
 .donate-qr-wrapper .qr-tooltip::before { content: ''; position: absolute; bottom: 100%; right: 24px; border: 8px solid transparent; border-bottom-color: var(--donate-bg); }
 .donate-qr-wrapper .qr-tooltip .qr-row { display: flex; gap: 14px; justify-content: center; align-items: center; }
@@ -803,17 +1266,50 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 .donate-qr-wrapper .qr-tooltip .qr-footer { text-align: center; color: var(--text-muted); font-size: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-color); letter-spacing: 0.5px; }
 
 /* ===== 信息面板 ===== */
-.info-panel { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%); max-width: 90%; text-align: center; pointer-events: none; text-shadow: 0 2px 20px rgba(0,0,0,0.9); z-index: 5; transition: opacity 0.3s ease; }
+.info-panel { 
+  position: fixed; 
+  bottom: 80px; 
+  left: 50%; 
+  transform: translateX(-50%); 
+  max-width: 90%; 
+  text-align: center; 
+  pointer-events: none; 
+  text-shadow: 0 2px 20px rgba(0,0,0,0.9); 
+  z-index: 5; 
+  transition: opacity 0.3s ease; 
+}
 .info-panel.hidden { opacity: 0 !important; pointer-events: none !important; }
 .info-panel .copyright { font-size: 20px; color: rgba(255,255,255,0.9); line-height: 1.6; font-weight: 500; letter-spacing: 0.5px; }
 .info-panel .date { font-size: 16px; color: rgba(255,255,255,0.5); margin-top: 6px; font-weight: 400; }
 .info-panel .desc { font-size: 17px; color: rgba(255,255,255,0.55); margin-top: 6px; max-width: 600px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis; line-height: 1.7; font-weight: 400; }
 
 /* ===== 评论 ===== */
-.comment-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 3000; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); justify-content: center; align-items: center; animation: fadeIn 0.25s ease; }
+.comment-overlay { 
+  display: none; 
+  position: fixed; 
+  top: 0; left: 0; right: 0; bottom: 0; 
+  z-index: 3000; 
+  background: rgba(0,0,0,0.5); 
+  backdrop-filter: blur(4px); 
+  justify-content: center; 
+  align-items: center; 
+  animation: fadeIn 0.25s ease; 
+}
 .comment-overlay.active { display: flex; }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-.comment-modal { background: #ffffff !important; border-radius: 16px; width: 92%; max-width: 720px; max-height: 85vh; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,0.3); border: 1px solid #e8e8e8; animation: slideUp 0.3s ease; overflow: hidden; }
+.comment-modal { 
+  background: #ffffff !important; 
+  border-radius: 16px; 
+  width: 92%; 
+  max-width: 720px; 
+  max-height: 85vh; 
+  display: flex; 
+  flex-direction: column; 
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3); 
+  border: 1px solid #e8e8e8; 
+  animation: slideUp 0.3s ease; 
+  overflow: hidden; 
+}
 .comment-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 24px 14px; border-bottom: 1px solid #e8e8e8; flex-shrink: 0; }
 .comment-header h2 { font-size: 18px; font-weight: 600; color: #1a1a2e; display: flex; align-items: center; gap: 10px; }
 .comment-header h2 i { color: #4fc3f7; }
@@ -824,10 +1320,7 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 .comment-body::-webkit-scrollbar-thumb { background: #ccc; border-radius: 2px; }
 
 /* ===== 响应式 ===== */
-@media (max-width: 1200px) { .card { flex: 0 0 20%; } }
-@media (max-width: 992px) { .card { flex: 0 0 25%; } }
 @media (max-width: 768px) {
-  .card { flex: 0 0 33.333%; }
   .navbar { left: 52px; min-width: 160px; padding: 12px 14px; top: 10px; }
   .nav-toggle { font-size: 18px; padding: 5px 10px; top: 10px; left: 10px; }
   .arrow { font-size: 20px; padding: 14px 10px; }
@@ -841,11 +1334,9 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
   .info-panel .date { font-size: 13px; }
 }
 @media (max-width: 576px) {
-  .card { flex: 0 0 50%; }
   .arrow { font-size: 18px; padding: 12px 8px; }
   .arrow-left { left: 4px; }
   .arrow-right { right: 4px; }
-  .toolbar .btn span { display: none; }
   .toolbar .btn { padding: 5px 10px; }
   .toolbar .btn i { font-size: 14px; }
   .dropdown-menu { min-width: 130px; right: -6px; }
