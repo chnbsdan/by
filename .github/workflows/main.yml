@@ -1,0 +1,42 @@
+name: 'Update Images Data'
+
+on:
+  schedule:
+    - cron: '0 20 * * *'   # UTC 20:00 = 北京时间 次日 04:00
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Update Data
+        run: npm run update-data
+
+      - name: Commit and Push
+        run: |
+          git config --global user.name 'GitHub Action'
+          git config --global user.email 'noreply@github.com'
+          git add .
+          git diff --staged --quiet || git commit -m "update images data $(date +'%Y-%m-%d')"
+          git push
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
