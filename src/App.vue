@@ -1,7 +1,12 @@
 <template>
   <div class="app">
+    <!-- ★★★ 汉堡按钮 ★★★ -->
+    <button class="nav-toggle" @click="toggleNav">
+      <i :class="navOpen ? 'fas fa-times' : 'fas fa-bars'"></i>
+    </button>
+
     <!-- 导航栏 -->
-    <div class="navbar" @mouseenter="navOpen = true" @mouseleave="navOpen = false">
+    <div class="navbar" :class="{ 'toggle-open': navOpen }" @mouseleave="closeNav">
       <div class="navbar-header">
         <div class="logo">
           <img src="/favicon.ico" alt="Logo" style="width:24px;height:24px;border-radius:4px;" />
@@ -58,15 +63,15 @@
       <button class="arrow arrow-right" @click.stop="nextPreview"><i class="fas fa-chevron-right"></i></button>
 
       <div class="preview-container">
-        <img ref="previewImg" class="preview-image" :src="previewUrl" alt="预览" crossorigin="anonymous" @load="onPreviewLoad" />
+        <img ref="previewImg" class="preview-image" :src="previewUrl" alt="预览" crossorigin="anonymous" @load="onPreviewLoad" @click="toggleToolbar" />
       </div>
 
       <!-- ★★★ 工具栏 - 点击图片切换显隐 ★★★ -->
       <div class="toolbar" :class="{ hidden: !toolbarVisible }">
         <a href="/" class="btn"><i class="fas fa-home"></i> <span>首页</span></a>
-        <div class="dropdown">
-          <button class="btn" @click.stop="toggleDropdown"><i class="fas fa-download"></i> <span>下载</span> <i class="fas fa-chevron-down"></i></button>
-          <div class="dropdown-menu" :class="{ show: dropdownOpen }" @mouseleave="dropdownOpen = false">
+        <div class="dropdown" @mouseenter="dropdownOpen = true" @mouseleave="dropdownOpen = false">
+          <button class="btn"><i class="fas fa-download"></i> <span>下载</span> <i class="fas fa-chevron-down"></i></button>
+          <div class="dropdown-menu" :class="{ show: dropdownOpen }">
             <a href="#" @click.prevent="downloadImage('4k')"><i class="fas fa-star"></i> 4K (UHD原图)</a>
             <a href="#" @click.prevent="downloadImage('fhd')"><i class="fas fa-desktop"></i> 全高清 (1920×1080)</a>
             <a href="#" @click.prevent="downloadImage('hd')"><i class="fas fa-laptop"></i> 高清 (1366×768)</a>
@@ -145,17 +150,14 @@ const commentVisible = ref(false)
 function getImageUrl(item, resolution) {
   if (!item) return ''
 
-  // 1. 历史数据：直接用完整链接
   if (item.isHistory) {
     return item.urlbase || ''
   }
 
-  // 2. 如果 urlbase 已经是完整链接
   if (item.urlbase && item.urlbase.startsWith('http')) {
     return item.urlbase
   }
 
-  // 3. 必应最新数据：拼接
   const resMap = {
     'thumb': '_400x240.jpg',
     'hd': '_1920x1200.jpg',
@@ -170,17 +172,14 @@ function getImageUrl(item, resolution) {
 function getThumbUrl(item) {
   if (!item) return ''
 
-  // 1. 历史数据：直接用完整链接
   if (item.isHistory) {
     return item.thumb || item.urlbase || ''
   }
 
-  // 2. 如果 urlbase 已经是完整链接
   if (item.urlbase && item.urlbase.startsWith('http')) {
     return item.urlbase
   }
 
-  // 3. 必应最新数据：拼接缩略图
   return 'https://www.bing.com' + (item.urlbase || '') + '_400x240.jpg'
 }
 
@@ -288,6 +287,20 @@ function resetSearch() {
   hasMore.value = true
   currentPage.value = 1
   renderPage(1)
+  if (navOpen.value) toggleNav()
+}
+
+// ============================================================
+// 导航
+// ============================================================
+function toggleNav() {
+  navOpen.value = !navOpen.value
+}
+
+function closeNav() {
+  if (navOpen.value) {
+    navOpen.value = false
+  }
 }
 
 // ============================================================
@@ -324,10 +337,8 @@ function openPreview(item) {
   dropdownOpen.value = false
   document.body.style.overflow = 'hidden'
 
-  // 更新标题
   updateTitle(previewItem.value)
 
-  // 更新背景 - 半透明
   const overlay = document.querySelector('.preview-overlay')
   if (overlay) {
     overlay.style.setProperty('--bg-url', 'url(' + previewUrl.value + ')')
@@ -365,7 +376,6 @@ function updatePreview() {
   }
 }
 
-// 更新标题
 function updateTitle(item) {
   const titleText = item.title || item.copyright || ''
   const dateText = item.startdate || item.date || ''
@@ -380,23 +390,15 @@ function updateTitle(item) {
   }
 }
 
-function onPreviewLoad() {
-  // 图片加载完成
-}
+function onPreviewLoad() {}
 
 // ★★★ 点击图片切换工具栏显隐 ★★★
 function toggleToolbar() {
   toolbarVisible.value = !toolbarVisible.value
 }
 
-// ★★★ 下拉菜单切换 ★★★
-function toggleDropdown(e) {
-  e.stopPropagation()
-  dropdownOpen.value = !dropdownOpen.value
-}
-
 // ============================================================
-// ★★★ 下载功能 - 完整修复 ★★★
+// ★★★ 下载功能 ★★★
 // ============================================================
 function getDownloadFileName(item, resolution) {
   const urlbase = item.urlbase || ''
@@ -446,7 +448,6 @@ async function smartCropDownload(blob, fileName, resolution) {
         const imgH = img.height
         const targetRatio = targetW / targetH
 
-        // 从中心裁剪
         let cropX, cropY, cropWidth, cropHeight
         if (imgW / imgH > targetRatio) {
           cropHeight = imgH
@@ -502,7 +503,6 @@ function downloadImage(resolution) {
   const url = getImageUrl(item, 'uhd')
   const isMobile = resolution === 'mobile' || resolution === 'mobile_s'
 
-  // 关闭下拉菜单
   dropdownOpen.value = false
 
   fetch(url, { mode: 'cors' })
@@ -518,7 +518,6 @@ function downloadImage(resolution) {
       }
     })
     .catch(() => {
-      // 备用方法
       const link = document.createElement('a')
       link.href = url
       link.download = fileName
@@ -561,6 +560,7 @@ function toggleTheme() {
 function openComment() {
   commentVisible.value = true
   document.body.style.overflow = 'hidden'
+  if (navOpen.value) toggleNav()
   nextTick(() => {
     if (typeof twikoo !== 'undefined') {
       twikoo.init({
@@ -610,7 +610,6 @@ function handleKeydown(e) {
   }
 }
 
-// 暴露给全局
 window.openComment = openComment
 </script>
 
@@ -686,9 +685,13 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 #app { width: 100%; height: 100%; }
 .app { display: flex; flex-direction: column; width: 100%; height: 100vh; height: 100dvh; padding: 0; overflow: hidden; background: var(--bg-primary); }
 
+/* ===== 汉堡按钮 ===== */
+.nav-toggle { position: fixed; top: 12px; left: 12px; z-index: 1001; background: var(--nav-bg); backdrop-filter: blur(8px); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); font-size: 20px; padding: 6px 12px; cursor: pointer; transition: 0.2s; line-height: 1; -webkit-tap-highlight-color: transparent; }
+.nav-toggle:hover { background: var(--accent-hover); border-color: rgba(79,195,247,0.3); }
+
 /* ===== 导航栏 ===== */
-.navbar { position: fixed; top: 12px; left: 12px; z-index: 1000; background: var(--nav-bg); backdrop-filter: blur(16px); border: 1px solid var(--border-color); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; min-width: 200px; opacity: 0; transform: translateY(-10px) scale(0.95); transition: opacity 0.3s ease, transform 0.3s ease, visibility 0.3s ease; pointer-events: none; visibility: hidden; box-shadow: 0 8px 32px var(--shadow-color); max-width: 90vw; }
-.navbar:hover { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; visibility: visible; }
+.navbar { position: fixed; top: 12px; left: 56px; z-index: 1000; background: var(--nav-bg); backdrop-filter: blur(16px); border: 1px solid var(--border-color); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; min-width: 200px; opacity: 0; transform: translateY(-10px) scale(0.95); transition: opacity 0.25s ease, transform 0.25s ease, visibility 0.25s ease; pointer-events: none; visibility: hidden; box-shadow: 0 8px 32px var(--shadow-color); max-width: 90vw; }
+.navbar.toggle-open { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; visibility: visible; }
 .navbar-header { display: flex; justify-content: space-between; align-items: center; width: 100%; }
 .navbar .logo { color: var(--text-primary); font-size: 17px; font-weight: 300; display: flex; align-items: center; gap: 8px; }
 .navbar .logo span { color: var(--accent-color); font-weight: 600; }
@@ -714,7 +717,8 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 
 /* ===== 卡片 ===== */
 .card { position: relative; overflow: hidden; background: var(--bg-card); flex: 0 0 20%; aspect-ratio: 16 / 9; cursor: pointer; transition: background 0.3s ease; contain: strict; -webkit-tap-highlight-color: transparent; border-radius: 0; min-height: 0; }
-.card img { width: 100%; height: 100%; object-fit: cover; display: block; position: relative; z-index: 2; opacity: 1; transition: transform 0.5s cubic-bezier(0.2, 0.9, 0.4, 1); background: var(--bg-card); -webkit-user-select: none; user-select: none; }
+.card img { width: 100%; height: 100%; object-fit: cover; display: block; position: relative; z-index: 2; opacity: 0; transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.2, 0.9, 0.4, 1); background: var(--bg-card); -webkit-user-select: none; user-select: none; }
+.card img.loaded { opacity: 1; }
 .card:hover img { transform: scale(1.05); }
 .card .placeholder-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-size: cover; background-position: center; filter: blur(12px) brightness(0.7); transform: scale(1.04); transition: opacity 0.6s ease; z-index: 1; background-color: var(--bg-card); }
 .card .placeholder-bg.hidden { opacity: 0; }
@@ -819,7 +823,8 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 @media (max-width: 992px) { .card { flex: 0 0 25%; } }
 @media (max-width: 768px) {
   .card { flex: 0 0 33.333%; }
-  .navbar { left: 12px; min-width: 160px; padding: 12px 14px; top: 10px; }
+  .navbar { left: 52px; min-width: 160px; padding: 12px 14px; top: 10px; }
+  .nav-toggle { font-size: 18px; padding: 5px 10px; top: 10px; left: 10px; }
   .arrow { font-size: 20px; padding: 14px 10px; }
   .arrow-left { left: 8px; }
   .arrow-right { right: 8px; }
