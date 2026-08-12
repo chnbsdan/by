@@ -31,7 +31,7 @@
     <div class="grid" ref="gridRef" @scroll="checkScroll">
       <div v-for="item in displayData" :key="item.startdate || item.date" class="card" @click="openPreview(item)">
         <div class="placeholder-bg" :style="{ backgroundImage: 'url(' + getThumbUrl(item) + ')' }" :class="{ hidden: item._loaded }"></div>
-        <img :src="getThumbUrl(item)" :alt="item.copyright || item.date" loading="lazy" crossorigin="anonymous" @load="item._loaded = true" @error="item._loaded = true" />
+        <img :src="getThumbUrl(item)" :alt="item.copyright || item.date" loading="lazy" crossorigin="anonymous" @load="item._loaded = true" @error="item._loaded = true" :class="{ loaded: item._loaded }" />
         <div class="info">
           <div class="date">{{ item.startdate || item.date }}</div>
           <div class="title">{{ item.title || item.copyright || '无标题' }}</div>
