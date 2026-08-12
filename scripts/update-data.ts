@@ -4,7 +4,8 @@ import { join } from 'path';
 import fetch from 'node-fetch';
 
 const endpoint = 'https://cn.bing.com/HPImageArchive.aspx?format=js&idx=0&n=10&mkt=zh-CN';
-const dataFilePath = join(__dirname, '..', 'json', 'data.json');
+// ★★★ 路径改成 public/json/data.json ★★★
+const dataFilePath = join(__dirname, '..', 'public', 'json', 'data.json');
 
 fetch(endpoint)
     .then((rsp) => rsp.json())
@@ -12,11 +13,10 @@ fetch(endpoint)
         const str = fs.readFileSync(dataFilePath, 'utf8');
         const result = JSON.parse(str);
 
-        // ★★★ 使用 enddate 作为日期 ★★★
         const data = images
             .filter((item) => !result.find(({ startdate }) => item.enddate === startdate))
             .map((item) => ({
-                startdate: item.enddate,  // ★★★ 用 enddate 代替 startdate ★★★
+                startdate: item.enddate,
                 copyright: item.copyright,
                 urlbase: item.urlbase,
                 title: item.title,
