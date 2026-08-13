@@ -32,13 +32,11 @@
 
     <!-- ★★★ 网格 ★★★ -->
     <div class="grid" ref="gridRef" @scroll="checkScroll">
-      <!-- ★★★ 加载中状态（首次加载） ★★★ -->
       <div v-if="loading && displayData.length === 0" class="loading-state">
         <div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i></div>
         <div class="loading-text">壁纸加载中...</div>
       </div>
 
-      <!-- ★★★ 卡片列表 ★★★ -->
       <div v-for="item in displayData" :key="item.startdate || item.date" class="card" @click="openPreview(item)">
         <div class="placeholder-bg" :style="{ backgroundImage: 'url(' + getThumbUrl(item) + ')' }" :class="{ hidden: item._loaded }"></div>
         <img 
@@ -56,40 +54,53 @@
         </div>
       </div>
 
-      <!-- ★★★ 加载更多 ★★★ -->
       <div v-if="loadingMore" class="loading-indicator"><i class="fas fa-spinner fa-spin"></i> 加载更多...</div>
-
-      <!-- ★★★ 全部加载完成 ★★★ -->
       <div v-if="!hasMore && displayData.length > 0" class="footer-end">
         <div class="footer-line"></div>
         <div class="footer-icon"><i class="fas fa-check-circle"></i></div>
         <div class="footer-text">已全部加载完成 · 共 {{ allData.length }} 张壁纸</div>
         <div class="footer-sub">— 本站由小史先生维护，感谢使用 Bing Wallpaper —</div>
       </div>
-
-      <!-- ★★★ 空状态（搜索无结果） ★★★ -->
       <div v-if="displayData.length === 0 && !loading && !loadingMore && allData.length > 0" class="empty">
         <div class="icon"><i class="fas fa-search"></i></div>
         <div>没有匹配 "{{ searchKeyword }}" 的壁纸</div>
       </div>
     </div>
 
-    <!-- 回到顶部 -->
     <button v-show="showBackToTop" class="back-to-top" @click="scrollToTop"><i class="fas fa-arrow-up"></i></button>
 
-    <!-- 预览 -->
+    <!-- ★★★ 预览 - 支持缩放 ★★★ -->
     <div v-if="previewVisible" class="preview-overlay active" @click.self="closePreview">
       <button class="arrow arrow-left" @click.stop="prevPreview"><i class="fas fa-chevron-left"></i></button>
       <button class="arrow arrow-right" @click.stop="nextPreview"><i class="fas fa-chevron-right"></i></button>
 
-      <div class="preview-container">
-        <img ref="previewImg" class="preview-image" :src="previewUrl" alt="预览" crossorigin="anonymous" @load="onPreviewLoad" @click="toggleToolbar" />
+      <div class="preview-container" ref="previewContainer">
+        <img 
+          ref="previewImg" 
+          class="preview-image" 
+          :src="previewUrl" 
+          alt="预览" 
+          crossorigin="anonymous" 
+          @load="onPreviewLoad" 
+          @click="toggleToolbar"
+          @wheel="onWheelZoom"
+          @mousedown="startDrag"
+          @touchstart="startDrag"
+          @mousemove="moveDrag"
+          @touchmove="moveDrag"
+          @mouseup="endDrag"
+          @touchend="endDrag"
+          :style="{
+            transform: 'translate(' + translateX + 'px, ' + translateY + 'px) scale(' + scale + ')',
+            cursor: scale > 1 ? 'grab' : 'default'
+          }"
+        />
       </div>
 
       <div class="toolbar" :class="{ hidden: !toolbarVisible }">
         <a href="/" class="btn"><i class="fas fa-home"></i> <span>首页</span></a>
-        <div class="dropdown" @mouseenter="dropdownOpen = true" @mouseleave="dropdownOpen = false">
-          <button class="btn" @click.stop="dropdownOpen = !dropdownOpen"><i class="fas fa-download"></i> <span>下载</span> <i class="fas fa-chevron-down"></i></button>
+        <div class="dropdown" ref="dropdownRef">
+          <button class="btn" @click.stop="toggleDropdown"><i class="fas fa-download"></i> <span>下载</span> <i class="fas fa-chevron-down"></i></button>
           <div class="dropdown-menu" :class="{ show: dropdownOpen }">
             <a href="#" @click.prevent="downloadImage('4k')"><i class="fas fa-star"></i> 4K (UHD原图)</a>
             <a href="#" @click.prevent="downloadImage('fhd')"><i class="fas fa-desktop"></i> 全高清 (1920×1080)</a>
@@ -136,97 +147,131 @@
 import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
 
 // ============================================================
-// ★★★ 智能主体检测 - 纯前端实现 ★★★
+// ★★★ AI 级智能主体检测（多尺度显著性检测） ★★★
 // ============================================================
-function detectMainSubject(imageElement) {
+function detectMainSubjectAdvanced(imageElement) {
   return new Promise((resolve) => {
     const img = imageElement
     if (!img.complete) {
-      img.onload = () => resolve(doDetect(img))
+      img.onload = () => resolve(doAdvancedDetect(img))
       img.onerror = () => resolve({ x: 50, y: 50 })
       return
     }
-    resolve(doDetect(img))
+    resolve(doAdvancedDetect(img))
   })
 }
 
-function doDetect(img) {
+function doAdvancedDetect(img) {
   try {
-    const canvas = document.createElement('canvas')
-    const ctx = canvas.getContext('2d', { willReadFrequently: true })
     const width = img.naturalWidth || img.width
     const height = img.naturalHeight || img.height
-    
     if (width === 0 || height === 0) return { x: 50, y: 50 }
     
-    // 缩小图片提高性能
-    const maxSize = 300
-    let scale = Math.min(1, maxSize / Math.max(width, height))
-    const cw = Math.floor(width * scale)
-    const ch = Math.floor(height * scale)
-    canvas.width = cw
-    canvas.height = ch
-    ctx.drawImage(img, 0, 0, cw, ch)
+    // 使用两个尺度检测
+    const scales = [
+      { w: Math.min(400, width * 0.5), h: Math.min(400, height * 0.5) },
+      { w: Math.min(200, width * 0.25), h: Math.min(200, height * 0.25) }
+    ]
     
-    const imageData = ctx.getImageData(0, 0, cw, ch)
-    const data = imageData.data
-    
-    // 计算显著度
-    const step = 4
-    const scores = new Float32Array(cw * ch)
-    
-    for (let y = step; y < ch - step; y += step) {
-      for (let x = step; x < cw - step; x += step) {
-        const idx = (y * cw + x) * 4
-        const gray = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2]
-        
-        // 计算与周围像素的差异（边缘检测）
-        let diff = 0
-        let count = 0
-        for (let dy = -step; dy <= step; dy += step) {
-          for (let dx = -step; dx <= step; dx += step) {
-            if (dx === 0 && dy === 0) continue
-            const ni = ((y + dy) * cw + (x + dx)) * 4
-            const ngray = 0.299 * data[ni] + 0.587 * data[ni + 1] + 0.114 * data[ni + 2]
-            diff += Math.abs(gray - ngray)
-            count++
-          }
-        }
-        scores[y * cw + x] = (gray / 255) * 0.3 + (diff / count / 255) * 0.7
-      }
-    }
-    
-    // 找到最显著的区域
-    const windowSize = Math.min(50, Math.floor(Math.min(cw, ch) * 0.25))
+    let bestX = width / 2
+    let bestY = height / 2
     let maxScore = -Infinity
-    let bestX = cw / 2
-    let bestY = ch / 2
     
-    for (let y = 0; y < ch - windowSize; y += 4) {
-      for (let x = 0; x < cw - windowSize; x += 4) {
-        let score = 0
-        let count = 0
-        for (let dy = 0; dy < windowSize; dy += 4) {
-          for (let dx = 0; dx < windowSize; dx += 4) {
-            score += scores[(y + dy) * cw + (x + dx)]
-            count++
+    for (const scale of scales) {
+      const canvas = document.createElement('canvas')
+      const ctx = canvas.getContext('2d', { willReadFrequently: true })
+      canvas.width = Math.floor(scale.w)
+      canvas.height = Math.floor(scale.h)
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+      
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+      const data = imageData.data
+      
+      // 计算显著度图（多特征融合）
+      const saliency = new Float32Array(canvas.width * canvas.height)
+      const step = 3
+      
+      for (let y = step; y < canvas.height - step; y += step) {
+        for (let x = step; x < canvas.width - step; x += step) {
+          const idx = (y * canvas.width + x) * 4
+          const r = data[idx]
+          const g = data[idx + 1]
+          const b = data[idx + 2]
+          const gray = 0.299 * r + 0.587 * g + 0.114 * b
+          
+          // 1. 亮度对比度
+          let contrast = 0
+          let count = 0
+          for (let dy = -step; dy <= step; dy += step) {
+            for (let dx = -step; dx <= step; dx += step) {
+              if (dx === 0 && dy === 0) continue
+              const ni = ((y + dy) * canvas.width + (x + dx)) * 4
+              const ngray = 0.299 * data[ni] + 0.587 * data[ni + 1] + 0.114 * data[ni + 2]
+              contrast += Math.abs(gray - ngray)
+              count++
+            }
           }
+          contrast = count > 0 ? contrast / count / 255 : 0
+          
+          // 2. 颜色方差
+          let colorVar = 0
+          let cCount = 0
+          for (let dy = -step; dy <= step; dy += step) {
+            for (let dx = -step; dx <= step; dx += step) {
+              if (dx === 0 && dy === 0) continue
+              const ni = ((y + dy) * canvas.width + (x + dx)) * 4
+              const dr = data[ni] - r
+              const dg = data[ni + 1] - g
+              const db = data[ni + 2] - b
+              colorVar += dr * dr + dg * dg + db * db
+              cCount++
+            }
+          }
+          colorVar = cCount > 0 ? Math.sqrt(colorVar / cCount) / 255 : 0
+          
+          // 3. 中心偏好（黄金分割点）
+          const cx = x / canvas.width
+          const cy = y / canvas.height
+          const centerDist = Math.sqrt(Math.pow(cx - 0.5, 2) + Math.pow(cy - 0.5, 2))
+          const centerBias = 1 - centerDist * 0.6
+          
+          // 4. 亮度增强（暗部抑制）
+          const brightnessBias = 0.3 + gray / 255 * 0.7
+          
+          // 综合得分
+          saliency[y * canvas.width + x] = (contrast * 0.5 + colorVar * 0.3 + centerBias * 0.2) * brightnessBias
         }
-        score = count > 0 ? score / count : 0
-        
-        // 中心偏好
-        const cx = x + windowSize / 2
-        const cy = y + windowSize / 2
-        const distFromCenter = Math.sqrt(
-          Math.pow((cx / cw) - 0.5, 2) +
-          Math.pow((cy / ch) - 0.5, 2)
-        )
-        score *= (1 + (1 - distFromCenter) * 0.3)
-        
-        if (score > maxScore) {
-          maxScore = score
-          bestX = cx / cw
-          bestY = cy / ch
+      }
+      
+      // 找到最显著的区域（使用滑动窗口）
+      const windowSize = Math.min(40, Math.floor(Math.min(canvas.width, canvas.height) * 0.2))
+      const windowStep = Math.max(2, Math.floor(windowSize / 4))
+      
+      for (let y = 0; y < canvas.height - windowSize; y += windowStep) {
+        for (let x = 0; x < canvas.width - windowSize; x += windowStep) {
+          let score = 0
+          let count = 0
+          for (let dy = 0; dy < windowSize; dy += 2) {
+            for (let dx = 0; dx < windowSize; dx += 2) {
+              score += saliency[(y + dy) * canvas.width + (x + dx)]
+              count++
+            }
+          }
+          score = count > 0 ? score / count : 0
+          
+          // 转换为原始坐标
+          const px = (x + windowSize / 2) / canvas.width * width
+          const py = (y + windowSize / 2) / canvas.height * height
+          
+          // 多尺度加权
+          const scaleWeight = scale.w / 400
+          const weightedScore = score * scaleWeight
+          
+          if (weightedScore > maxScore) {
+            maxScore = weightedScore
+            bestX = px
+            bestY = py
+          }
         }
       }
     }
@@ -235,10 +280,11 @@ function doDetect(img) {
     if (maxScore < 0.01) return { x: 50, y: 50 }
     
     return {
-      x: Math.max(15, Math.min(85, bestX * 100)),
-      y: Math.max(15, Math.min(85, bestY * 100))
+      x: Math.max(15, Math.min(85, (bestX / width) * 100)),
+      y: Math.max(15, Math.min(85, (bestY / height) * 100))
     }
   } catch (e) {
+    console.warn('检测失败:', e)
     return { x: 50, y: 50 }
   }
 }
@@ -259,6 +305,7 @@ const theme = ref('dark')
 const navOpen = ref(false)
 const gridRef = ref(null)
 const previewImg = ref(null)
+const previewContainer = ref(null)
 const showBackToTop = ref(false)
 
 // 预览
@@ -268,6 +315,17 @@ const previewIndex = ref(0)
 const previewUrl = ref('')
 const toolbarVisible = ref(true)
 const dropdownOpen = ref(false)
+const dropdownRef = ref(null)
+
+// ★★★ 缩放状态 ★★★
+const scale = ref(1)
+const translateX = ref(0)
+const translateY = ref(0)
+const isDragging = ref(false)
+const startX = ref(0)
+const startY = ref(0)
+const lastTranslateX = ref(0)
+const lastTranslateY = ref(0)
 
 // 评论
 const commentVisible = ref(false)
@@ -310,7 +368,7 @@ async function handleCardImageLoad(item, event) {
   }
   
   try {
-    const position = await detectMainSubject(img)
+    const position = await detectMainSubjectAdvanced(img)
     img.style.objectPosition = position.x + '% ' + position.y + '%'
     item._loaded = true
   } catch (e) {
@@ -458,7 +516,7 @@ function scrollToTop() {
 }
 
 // ============================================================
-// 预览
+// ★★★ 预览 + 缩放 ★★★
 // ============================================================
 function openPreview(item) {
   const idx = allData.value.findIndex(d =>
@@ -470,6 +528,10 @@ function openPreview(item) {
   previewVisible.value = true
   toolbarVisible.value = true
   dropdownOpen.value = false
+  // ★★★ 重置缩放 ★★★
+  scale.value = 1
+  translateX.value = 0
+  translateY.value = 0
   document.body.style.overflow = 'hidden'
   updateTitle(previewItem.value)
   const overlay = document.querySelector('.preview-overlay')
@@ -502,6 +564,10 @@ function nextPreview() {
 function updatePreview() {
   previewItem.value = allData.value[previewIndex.value]
   previewUrl.value = getImageUrl(previewItem.value, 'fhd')
+  // ★★★ 切换时重置缩放 ★★★
+  scale.value = 1
+  translateX.value = 0
+  translateY.value = 0
   updateTitle(previewItem.value)
   const overlay = document.querySelector('.preview-overlay')
   if (overlay) {
@@ -529,7 +595,7 @@ async function onPreviewLoad() {
   if (!img) return
   
   try {
-    const position = await detectMainSubject(img)
+    const position = await detectMainSubjectAdvanced(img)
     img.style.objectPosition = position.x + '% ' + position.y + '%'
   } catch (e) {
     img.style.objectPosition = '50% 50%'
@@ -540,8 +606,53 @@ function toggleToolbar() {
   toolbarVisible.value = !toolbarVisible.value
 }
 
+// ★★★ 下拉菜单 - 点击切换 ★★★
+function toggleDropdown(e) {
+  e.stopPropagation()
+  dropdownOpen.value = !dropdownOpen.value
+}
+
+// 点击外部关闭下拉菜单
+function handleClickOutside(e) {
+  if (dropdownRef.value && !dropdownRef.value.contains(e.target)) {
+    dropdownOpen.value = false
+  }
+}
+
+// ★★★ 滚轮缩放 ★★★
+function onWheelZoom(e) {
+  e.preventDefault()
+  const delta = e.deltaY > 0 ? -0.1 : 0.1
+  const newScale = Math.max(0.3, Math.min(5, scale.value + delta))
+  scale.value = newScale
+}
+
+// ★★★ 拖拽平移 ★★★
+function startDrag(e) {
+  if (scale.value <= 1) return
+  isDragging.value = true
+  const pos = e.type === 'mousedown' ? e : e.touches[0]
+  startX.value = pos.clientX
+  startY.value = pos.clientY
+  lastTranslateX.value = translateX.value
+  lastTranslateY.value = translateY.value
+  e.preventDefault()
+}
+
+function moveDrag(e) {
+  if (!isDragging.value) return
+  const pos = e.type === 'mousemove' ? e : e.touches[0]
+  translateX.value = lastTranslateX.value + (pos.clientX - startX.value)
+  translateY.value = lastTranslateY.value + (pos.clientY - startY.value)
+  e.preventDefault()
+}
+
+function endDrag() {
+  isDragging.value = false
+}
+
 // ============================================================
-// 下载 - 智能裁剪手机比例
+// 下载
 // ============================================================
 function getDownloadFileName(item, resolution) {
   const urlbase = item.urlbase || ''
@@ -576,8 +687,8 @@ function getDownloadFileName(item, resolution) {
   return 'wallpaper_' + (item.startdate || item.date || Date.now()) + '_' + resolution + '.jpg'
 }
 
-// ★★★ 智能裁剪 - 手机比例 ★★★
-async function smartCropDownload(blob, fileName, resolution) {
+// ★★★ 智能裁剪 - 使用检测到的主体位置 ★★★
+async function smartCropWithSubject(blob, fileName, resolution, subjectPosition) {
   return new Promise((resolve) => {
     const img = new Image()
     const url = URL.createObjectURL(blob)
@@ -592,16 +703,36 @@ async function smartCropDownload(blob, fileName, resolution) {
         const targetRatio = targetW / targetH
 
         let cropX, cropY, cropWidth, cropHeight
-        if (imgW / imgH > targetRatio) {
-          cropHeight = imgH
-          cropWidth = imgH * targetRatio
-          cropX = (imgW - cropWidth) / 2
-          cropY = 0
+        
+        // 如果有主体位置，以主体为中心裁剪
+        if (subjectPosition) {
+          const centerX = (subjectPosition.x / 100) * imgW
+          const centerY = (subjectPosition.y / 100) * imgH
+          
+          if (imgW / imgH > targetRatio) {
+            cropHeight = imgH
+            cropWidth = imgH * targetRatio
+            cropX = Math.max(0, Math.min(imgW - cropWidth, centerX - cropWidth / 2))
+            cropY = 0
+          } else {
+            cropWidth = imgW
+            cropHeight = imgW / targetRatio
+            cropX = 0
+            cropY = Math.max(0, Math.min(imgH - cropHeight, centerY - cropHeight / 2))
+          }
         } else {
-          cropWidth = imgW
-          cropHeight = imgW / targetRatio
-          cropX = 0
-          cropY = (imgH - cropHeight) / 2
+          // 中心裁剪
+          if (imgW / imgH > targetRatio) {
+            cropHeight = imgH
+            cropWidth = imgH * targetRatio
+            cropX = (imgW - cropWidth) / 2
+            cropY = 0
+          } else {
+            cropWidth = imgW
+            cropHeight = imgW / targetRatio
+            cropX = 0
+            cropY = (imgH - cropHeight) / 2
+          }
         }
 
         const canvas = document.createElement('canvas')
@@ -648,14 +779,29 @@ function downloadImage(resolution) {
 
   dropdownOpen.value = false
 
+  // ★★★ 获取主体位置用于智能裁剪 ★★★
   fetch(url, { mode: 'cors' })
     .then(res => {
       if (!res.ok) throw new Error('网络请求失败')
       return res.blob()
     })
-    .then(blob => {
+    .then(async (blob) => {
       if (isMobile) {
-        return smartCropDownload(blob, fileName, resolution)
+        // 先检测主体位置
+        const img = new Image()
+        const imgUrl = URL.createObjectURL(blob)
+        img.src = imgUrl
+        await new Promise((resolve) => { img.onload = resolve; img.onerror = resolve })
+        
+        let subjectPosition = null
+        try {
+          const pos = await detectMainSubjectAdvanced(img)
+          subjectPosition = pos
+          console.log('🎯 下载智能裁剪位置:', pos.x + '%', pos.y + '%')
+        } catch (e) {}
+        URL.revokeObjectURL(imgUrl)
+        
+        return smartCropWithSubject(blob, fileName, resolution, subjectPosition)
       } else {
         downloadBlob(blob, fileName)
       }
@@ -756,10 +902,12 @@ onMounted(() => {
   document.title = '必应壁纸 | 每日一图，带你领略世界之美'
 
   document.addEventListener('keydown', handleKeydown)
+  document.addEventListener('click', handleClickOutside)
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', handleKeydown)
+  document.removeEventListener('click', handleClickOutside)
 })
 
 function handleKeydown(e) {
@@ -1055,11 +1203,12 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
   justify-content: center; 
   cursor: default; 
   overflow: hidden; 
+  touch-action: none;
 }
 .preview-image { 
-  width: 100vw; 
-  height: 100vh; 
-  object-fit: cover; 
+  width: 100%; 
+  height: 100%; 
+  object-fit: contain; 
   object-position: 50% 50%; 
   border-radius: 0; 
   box-shadow: none; 
@@ -1071,7 +1220,9 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
   -webkit-user-select: none; 
   user-select: none; 
   -webkit-touch-callout: none; 
-  transition: object-position 0.8s cubic-bezier(0.25,0.46,0.45,0.94); 
+  transition: transform 0.1s ease;
+  max-width: 100vw;
+  max-height: 100vh;
 }
 
 /* ===== 箭头 ===== */
