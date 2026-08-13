@@ -158,29 +158,30 @@
 import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
 
 // ============================================================
-// ★★★ 频谱残差显著性检测 (Spectral Residual) ★★★
-// 这是学术界公认有效的显著性检测算法
-// 对人脸、动物、物体都有效
+// ★★★ 增强版显著性检测（三合一） ★★★
+// 1. 灰度图检测 → 解决白色动物在雪地的问题
+// 2. 彩色图检测 → 解决彩色主体的问题  
+// 3. 边缘检测 → 解决轮廓问题
 // ============================================================
+
 function detectSalientRegion(imageElement) {
   return new Promise((resolve) => {
     const img = imageElement
     if (!img.complete) {
-      img.onload = () => resolve(doSpectralResidualDetect(img))
+      img.onload = () => resolve(doEnhancedDetect(img))
       img.onerror = () => resolve({ x: 50, y: 50 })
       return
     }
-    resolve(doSpectralResidualDetect(img))
+    resolve(doEnhancedDetect(img))
   })
 }
 
-function doSpectralResidualDetect(img) {
+function doEnhancedDetect(img) {
   try {
     const width = img.naturalWidth || img.width
     const height = img.naturalHeight || img.height
     if (width === 0 || height === 0) return { x: 50, y: 50 }
     
-    // 缩小图片到 256x256 进行频谱分析
     const size = 256
     const canvas = document.createElement('canvas')
     const ctx = canvas.getContext('2d', { willReadFrequently: true })
@@ -193,124 +194,224 @@ function doSpectralResidualDetect(img) {
     
     // 转灰度
     const gray = new Float32Array(size * size)
+    const r = new Float32Array(size * size)
+    const g = new Float32Array(size * size)
+    const b = new Float32Array(size * size)
+    
     for (let i = 0; i < size * size; i++) {
       const idx = i * 4
-      gray[i] = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2]
+      r[i] = data[idx]
+      g[i] = data[idx + 1]
+      b[i] = data[idx + 2]
+      gray[i] = 0.299 * r[i] + 0.587 * g[i] + 0.114 * b[i]
     }
     
-    // ★★★ 频谱残差算法 ★★★
-    // 1. 计算对数幅度谱
-    // 2. 减去平均频谱（残差）
-    // 3. 反变换得到显著图
+    // 三种检测融合
+    const graySaliency = computeGraySaliency(gray, size)
+    const colorSaliency = computeColorSaliency(r, g, b, size)
+    const edgeSaliency = computeEdgeSaliency(gray, size)
     
-    // 简化版：用滑动窗口计算局部对比度
-    // 窗口大小 32x32
-    const windowSize = 32
-    const halfWindow = windowSize / 2
-    const saliency = new Float32Array(size * size)
-    
-    // 多尺度检测（提高准确率）
-    const scales = [16, 32, 48]
-    
-    for (const ws of scales) {
-      const half = ws / 2
-      const step = Math.max(2, Math.floor(ws / 8))
-      
-      for (let y = half; y < size - half; y += step) {
-        for (let x = half; x < size - half; x += step) {
-          const idx = y * size + x
-          const centerGray = gray[idx]
-          
-          // 计算周围像素的平均值和方差
-          let sum = 0, sumSq = 0, count = 0
-          for (let dy = -half; dy <= half; dy += 2) {
-            for (let dx = -half; dx <= half; dx += 2) {
-              if (dx === 0 && dy === 0) continue
-              const ni = (y + dy) * size + (x + dx)
-              const val = gray[ni]
-              sum += val
-              sumSq += val * val
-              count++
-            }
-          }
-          
-          if (count === 0) continue
-          const mean = sum / count
-          const variance = sumSq / count - mean * mean
-          const contrast = Math.abs(centerGray - mean)
-          
-          // 显著度 = 对比度 × 方差（高对比度+高方差的区域最显著）
-          const score = contrast * Math.sqrt(variance + 1)
-          saliency[idx] = Math.max(saliency[idx], score)
-        }
-      }
+    const combined = new Float32Array(size * size)
+    for (let i = 0; i < size * size; i++) {
+      combined[i] = graySaliency[i] * 0.4 + colorSaliency[i] * 0.3 + edgeSaliency[i] * 0.3
     }
     
-    // 高斯模糊平滑
-    const smoothed = new Float32Array(size * size)
-    const blurRadius = 8
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-        let sum = 0, weightSum = 0
-        for (let dy = -blurRadius; dy <= blurRadius; dy++) {
-          for (let dx = -blurRadius; dx <= blurRadius; dx++) {
-            const px = x + dx, py = y + dy
-            if (px < 0 || px >= size || py < 0 || py >= size) continue
-            const dist = Math.sqrt(dx * dx + dy * dy)
-            const weight = Math.exp(-dist * dist / (2 * blurRadius * blurRadius))
-            sum += saliency[py * size + px] * weight
-            weightSum += weight
-          }
-        }
-        smoothed[y * size + x] = weightSum > 0 ? sum / weightSum : 0
-      }
-    }
+    return findBestRegion(combined, size, width, height)
     
-    // 找到最显著的区域
-    let maxScore = 0
-    let bestX = size / 2
-    let bestY = size / 2
-    const regionSize = Math.min(40, Math.floor(size * 0.2))
-    
-    for (let y = 0; y < size - regionSize; y += 2) {
-      for (let x = 0; x < size - regionSize; x += 2) {
-        let score = 0
-        for (let dy = 0; dy < regionSize; dy += 2) {
-          for (let dx = 0; dx < regionSize; dx += 2) {
-            score += smoothed[(y + dy) * size + (x + dx)]
-          }
-        }
-        // 中心偏好（但权重降低，让真正的主体能被检测到）
-        const cx = x + regionSize / 2
-        const cy = y + regionSize / 2
-        const distFromCenter = Math.sqrt(
-          Math.pow((cx / size) - 0.5, 2) +
-          Math.pow((cy / size) - 0.5, 2)
-        )
-        score *= (1 + (1 - distFromCenter) * 0.15)
-        
-        if (score > maxScore) {
-          maxScore = score
-          bestX = cx
-          bestY = cy
-        }
-      }
-    }
-    
-    // 转换回原始坐标
-    const centerX = (bestX / size) * 100
-    const centerY = (bestY / size) * 100
-    const clampedX = Math.max(15, Math.min(85, centerX))
-    const clampedY = Math.max(15, Math.min(85, centerY))
-    
-    return { x: clampedX, y: clampedY }
   } catch (e) {
     console.warn('检测失败:', e)
     return { x: 50, y: 50 }
   }
 }
 
-// 简化的快速检测（用于卡片缩略图，只检测 X 轴）
+// 灰度显著度
+function computeGraySaliency(gray, size) {
+  const result = new Float32Array(size * size)
+  const half = 16
+  const step = 2
+  
+  for (let y = half; y < size - half; y += step) {
+    for (let x = half; x < size - half; x += step) {
+      const idx = y * size + x
+      const center = gray[idx]
+      
+      let sum = 0, sumSq = 0, count = 0
+      for (let dy = -half; dy <= half; dy += 2) {
+        for (let dx = -half; dx <= half; dx += 2) {
+          if (dx === 0 && dy === 0) continue
+          const ni = (y + dy) * size + (x + dx)
+          const val = gray[ni]
+          sum += val
+          sumSq += val * val
+          count++
+        }
+      }
+      
+      if (count === 0) continue
+      const mean = sum / count
+      const variance = sumSq / count - mean * mean
+      const contrast = Math.abs(center - mean)
+      const brightnessNorm = 1 + (center / 255) * 0.2
+      result[idx] = contrast * Math.sqrt(variance + 1) * brightnessNorm
+    }
+  }
+  return gaussianBlur(result, size, 6)
+}
+
+// 彩色显著度
+function computeColorSaliency(r, g, b, size) {
+  const result = new Float32Array(size * size)
+  const half = 14
+  const step = 2
+  
+  for (let y = half; y < size - half; y += step) {
+    for (let x = half; x < size - half; x += step) {
+      const idx = y * size + x
+      
+      let sumR = 0, sumG = 0, sumB = 0, count = 0
+      for (let dy = -half; dy <= half; dy += 2) {
+        for (let dx = -half; dx <= half; dx += 2) {
+          if (dx === 0 && dy === 0) continue
+          const ni = (y + dy) * size + (x + dx)
+          sumR += r[ni]
+          sumG += g[ni]
+          sumB += b[ni]
+          count++
+        }
+      }
+      
+      if (count === 0) continue
+      const meanR = sumR / count
+      const meanG = sumG / count
+      const meanB = sumB / count
+      
+      const colorDist = Math.sqrt(
+        Math.pow(r[idx] - meanR, 2) +
+        Math.pow(g[idx] - meanG, 2) +
+        Math.pow(b[idx] - meanB, 2)
+      )
+      
+      // 降低高饱和度的权重（红色果子不会被过度强调）
+      const sat = Math.max(r[idx], g[idx], b[idx]) - Math.min(r[idx], g[idx], b[idx])
+      const satWeight = 1 - (sat / 255) * 0.15
+      
+      result[idx] = colorDist * satWeight
+    }
+  }
+  return gaussianBlur(result, size, 6)
+}
+
+// 边缘显著度
+function computeEdgeSaliency(gray, size) {
+  const edges = new Float32Array(size * size)
+  
+  for (let y = 1; y < size - 1; y++) {
+    for (let x = 1; x < size - 1; x++) {
+      const idx = y * size + x
+      const gx = 
+        -gray[(y-1) * size + (x-1)] + gray[(y-1) * size + (x+1)]
+        -2 * gray[y * size + (x-1)] + 2 * gray[y * size + (x+1)]
+        -gray[(y+1) * size + (x-1)] + gray[(y+1) * size + (x+1)]
+      
+      const gy = 
+        -gray[(y-1) * size + (x-1)] - 2 * gray[(y-1) * size + x] - gray[(y-1) * size + (x+1)]
+        +gray[(y+1) * size + (x-1)] + 2 * gray[(y+1) * size + x] + gray[(y+1) * size + (x+1)]
+      
+      edges[idx] = Math.min(1, Math.sqrt(gx * gx + gy * gy) / 255)
+    }
+  }
+  
+  // 膨胀边缘
+  const dilated = new Float32Array(size * size)
+  const radius = 3
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      let maxVal = 0
+      for (let dy = -radius; dy <= radius; dy++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+          const px = x + dx, py = y + dy
+          if (px < 0 || px >= size || py < 0 || py >= size) continue
+          const val = edges[py * size + px]
+          if (val > maxVal) maxVal = val
+        }
+      }
+      dilated[y * size + x] = maxVal
+    }
+  }
+  return dilated
+}
+
+// 高斯模糊
+function gaussianBlur(data, size, radius) {
+  const result = new Float32Array(data.length)
+  const sigma = radius / 2
+  const half = Math.floor(radius / 2)
+  
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      let sum = 0, weightSum = 0
+      for (let dy = -half; dy <= half; dy++) {
+        for (let dx = -half; dx <= half; dx++) {
+          const px = x + dx, py = y + dy
+          if (px < 0 || px >= size || py < 0 || py >= size) continue
+          const dist = dx * dx + dy * dy
+          const weight = Math.exp(-dist / (2 * sigma * sigma))
+          sum += data[py * size + px] * weight
+          weightSum += weight
+        }
+      }
+      result[y * size + x] = weightSum > 0 ? sum / weightSum : 0
+    }
+  }
+  return result
+}
+
+// 找到最佳区域
+function findBestRegion(saliency, size, origWidth, origHeight) {
+  let maxScore = 0
+  let bestX = size / 2
+  let bestY = size / 2
+  const regionSize = Math.min(40, Math.floor(size * 0.2))
+  
+  for (let y = 0; y < size - regionSize; y += 2) {
+    for (let x = 0; x < size - regionSize; x += 2) {
+      let score = 0
+      let count = 0
+      for (let dy = 0; dy < regionSize; dy += 2) {
+        for (let dx = 0; dx < regionSize; dx += 2) {
+          score += saliency[(y + dy) * size + (x + dx)]
+          count++
+        }
+      }
+      score = count > 0 ? score / count : 0
+      
+      const cx = x + regionSize / 2
+      const cy = y + regionSize / 2
+      const distFromCenter = Math.sqrt(
+        Math.pow((cx / size) - 0.5, 2) +
+        Math.pow((cy / size) - 0.5, 2)
+      )
+      score *= (1 + (1 - distFromCenter) * 0.1)
+      
+      if (score > maxScore) {
+        maxScore = score
+        bestX = cx
+        bestY = cy
+      }
+    }
+  }
+  
+  if (maxScore < 0.001) {
+    return { x: 50, y: 50 }
+  }
+  
+  return {
+    x: Math.max(15, Math.min(85, (bestX / size) * 100)),
+    y: Math.max(15, Math.min(85, (bestY / size) * 100))
+  }
+}
+
+// ★★★ 快速 X 轴检测（卡片缩略图用） ★★★
 function detectSalientX(imageElement) {
   return new Promise((resolve) => {
     const img = imageElement
@@ -329,7 +430,6 @@ function doFastXDetect(img) {
     const height = img.naturalHeight || img.height
     if (width === 0 || height === 0) return 50
     
-    // 缩小到 200px 宽
     const targetW = 200
     const scale = targetW / width
     const targetH = Math.floor(height * scale)
@@ -343,27 +443,27 @@ function doFastXDetect(img) {
     const imageData = ctx.getImageData(0, 0, targetW, targetH)
     const data = imageData.data
     
-    // 计算每列的方差（边缘检测）
+    const gray = new Float32Array(targetW * targetH)
+    for (let i = 0; i < targetW * targetH; i++) {
+      const idx = i * 4
+      gray[i] = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2]
+    }
+    
     const colScores = new Float32Array(targetW)
     const step = 2
     
     for (let x = 0; x < targetW; x += step) {
-      let sum = 0, sumSq = 0, count = 0
-      for (let y = 0; y < targetH; y += step) {
-        const idx = (y * targetW + x) * 4
-        const gray = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2]
-        sum += gray
-        sumSq += gray * gray
+      let sum = 0, count = 0
+      for (let y = 1; y < targetH - 1; y += step) {
+        const idx = y * targetW + x
+        const dx = Math.abs(gray[idx + 1] - gray[idx - 1])
+        const dy = Math.abs(gray[(y + 1) * targetW + x] - gray[(y - 1) * targetW + x])
+        sum += Math.sqrt(dx * dx + dy * dy)
         count++
       }
-      if (count > 0) {
-        const mean = sum / count
-        const variance = sumSq / count - mean * mean
-        colScores[x] = variance
-      }
+      colScores[x] = count > 0 ? sum / count : 0
     }
     
-    // 找到方差最大的区域（边缘最多的区域 = 主体）
     const windowSize = Math.min(30, Math.floor(targetW * 0.2))
     let maxScore = 0
     let bestX = targetW / 2
@@ -373,7 +473,6 @@ function doFastXDetect(img) {
       for (let i = 0; i < windowSize && x + i < targetW; i++) {
         score += colScores[x + i]
       }
-      // 中心偏好
       const centerDist = Math.abs((x + windowSize / 2) / targetW - 0.5)
       score *= (1 + (1 - centerDist) * 0.1)
       
@@ -405,9 +504,7 @@ const theme = ref('dark')
 const navOpen = ref(false)
 const gridRef = ref(null)
 const previewImg = ref(null)
-const previewContainer = ref(null)
 const showBackToTop = ref(false)
-const cardImages = ref([])
 
 // 预览
 const previewVisible = ref(false)
@@ -462,14 +559,12 @@ async function handleCardImageLoad(item, event) {
   const img = event.target
   if (!img) return
   
-  // 桌面端：居中
   if (window.innerWidth > 768) {
     img.style.objectPosition = '50% 50%'
     item._loaded = true
     return
   }
   
-  // ★★★ 移动端：使用快速 X 轴检测 ★★★
   try {
     const posX = await detectSalientX(img)
     img.style.objectPosition = posX + '% 50%'
@@ -700,7 +795,7 @@ function updateTitle(item) {
   }
 }
 
-// ★★★ 预览大图智能居中 - 使用频谱残差检测 ★★★
+// ★★★ 预览大图智能居中 ★★★
 function onPreviewLoad() {
   imageLoaded.value = true
   const img = previewImg.value
@@ -1126,7 +1221,7 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
   -webkit-tap-highlight-color: transparent; 
   border-radius: 0; 
   min-height: 0; 
-  aspect-ratio: 3 / 5;   /* ★★★ 手机端竖屏 ★★★ */
+  aspect-ratio: 3 / 5;
 }
 @media (min-width: 768px) { 
   .card { 
@@ -1241,7 +1336,7 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 }
 .back-to-top { display: flex; }
 
-/* ===== ★★★ 预览 - 参考 Nuxt 版 ★★★ ===== */
+/* ===== ★★★ 预览 ★★★ ===== */
 .preview-overlay { 
   display: none; 
   position: fixed; 
