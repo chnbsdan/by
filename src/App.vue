@@ -1127,7 +1127,9 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
   position: fixed; 
   top: 0; left: 0; right: 0; bottom: 0; 
   z-index: 2000; 
-  background: rgba(0,0,0,0.6); 
+  background: rgba(0,0,0,0.4);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   justify-content: center; 
   align-items: center; 
   cursor: default; 
@@ -1138,11 +1140,11 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
   content: ''; 
   position: fixed; 
   top: -10px; left: -10px; right: -10px; bottom: -10px; 
-  background: center/cover no-repeat; 
-  filter: blur(30px) brightness(0.4); 
+  background: rgba(0,0,0,0.15);
+  backdrop-filter: blur(30px);
+  -webkit-backdrop-filter: blur(30px);
   z-index: -1; 
-  transform: scale(1.1); 
-  transition: background-image 0.4s ease; 
+  transform: scale(1.05); 
 }
 
 .preview-container { 
