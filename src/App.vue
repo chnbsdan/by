@@ -158,131 +158,77 @@
 import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
 
 // ============================================================
-// ★★★ AI 级智能主体检测（多尺度显著性检测） ★★★
+// ★★★ 简化版主体检测 - 只检测 X 轴（左右），适合移动端 ★★★
 // ============================================================
 function detectMainSubjectAdvanced(imageElement) {
   return new Promise((resolve) => {
     const img = imageElement
     if (!img.complete) {
-      img.onload = () => resolve(doAdvancedDetect(img))
+      img.onload = () => resolve(doSimpleDetect(img))
       img.onerror = () => resolve({ x: 50, y: 50 })
       return
     }
-    resolve(doAdvancedDetect(img))
+    resolve(doSimpleDetect(img))
   })
 }
 
-function doAdvancedDetect(img) {
+function doSimpleDetect(img) {
   try {
     const width = img.naturalWidth || img.width
     const height = img.naturalHeight || img.height
     if (width === 0 || height === 0) return { x: 50, y: 50 }
     
-    const scales = [
-      { w: Math.min(400, width * 0.5), h: Math.min(400, height * 0.5) },
-      { w: Math.min(200, width * 0.25), h: Math.min(200, height * 0.25) }
-    ]
+    // 缩小图片到 200px 宽，只检测 X 轴
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    const scale = Math.min(1, 200 / width)
+    canvas.width = Math.floor(width * scale)
+    canvas.height = Math.floor(height * scale)
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
     
-    let bestX = width / 2
-    let bestY = height / 2
-    let maxScore = -Infinity
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+    const data = imageData.data
     
-    for (const scale of scales) {
-      const canvas = document.createElement('canvas')
-      const ctx = canvas.getContext('2d', { willReadFrequently: true })
-      canvas.width = Math.floor(scale.w)
-      canvas.height = Math.floor(scale.h)
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-      
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-      const data = imageData.data
-      
-      const saliency = new Float32Array(canvas.width * canvas.height)
-      const step = 3
-      
-      for (let y = step; y < canvas.height - step; y += step) {
-        for (let x = step; x < canvas.width - step; x += step) {
-          const idx = (y * canvas.width + x) * 4
-          const r = data[idx]
-          const g = data[idx + 1]
-          const b = data[idx + 2]
-          const gray = 0.299 * r + 0.587 * g + 0.114 * b
-          
-          let contrast = 0
-          let count = 0
-          for (let dy = -step; dy <= step; dy += step) {
-            for (let dx = -step; dx <= step; dx += step) {
-              if (dx === 0 && dy === 0) continue
-              const ni = ((y + dy) * canvas.width + (x + dx)) * 4
-              const ngray = 0.299 * data[ni] + 0.587 * data[ni + 1] + 0.114 * data[ni + 2]
-              contrast += Math.abs(gray - ngray)
-              count++
-            }
-          }
-          contrast = count > 0 ? contrast / count / 255 : 0
-          
-          let colorVar = 0
-          let cCount = 0
-          for (let dy = -step; dy <= step; dy += step) {
-            for (let dx = -step; dx <= step; dx += step) {
-              if (dx === 0 && dy === 0) continue
-              const ni = ((y + dy) * canvas.width + (x + dx)) * 4
-              const dr = data[ni] - r
-              const dg = data[ni + 1] - g
-              const db = data[ni + 2] - b
-              colorVar += dr * dr + dg * dg + db * db
-              cCount++
-            }
-          }
-          colorVar = cCount > 0 ? Math.sqrt(colorVar / cCount) / 255 : 0
-          
-          const cx = x / canvas.width
-          const cy = y / canvas.height
-          const centerDist = Math.sqrt(Math.pow(cx - 0.5, 2) + Math.pow(cy - 0.5, 2))
-          const centerBias = 1 - centerDist * 0.6
-          const brightnessBias = 0.3 + gray / 255 * 0.7
-          
-          saliency[y * canvas.width + x] = (contrast * 0.5 + colorVar * 0.3 + centerBias * 0.2) * brightnessBias
-        }
+    // 只计算 X 轴方向的显著度
+    const colScores = new Float32Array(canvas.width)
+    const step = 2
+    
+    for (let x = 0; x < canvas.width; x += step) {
+      let sum = 0, count = 0
+      for (let y = 0; y < canvas.height; y += step) {
+        const idx = (y * canvas.width + x) * 4
+        const gray = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2]
+        sum += gray
+        count++
       }
+      colScores[x] = count > 0 ? sum / count : 0
+    }
+    
+    // 找到亮度最高的区域
+    let maxScore = 0
+    let bestX = canvas.width / 2
+    const windowSize = Math.min(40, Math.floor(canvas.width * 0.2))
+    
+    for (let x = 0; x < canvas.width - windowSize; x += 2) {
+      let score = 0
+      for (let i = 0; i < windowSize && x + i < canvas.width; i++) {
+        score += colScores[x + i]
+      }
+      // 中心偏好
+      const centerDist = Math.abs((x + windowSize / 2) / canvas.width - 0.5)
+      score *= (1 + (1 - centerDist) * 0.2)
       
-      const windowSize = Math.min(40, Math.floor(Math.min(canvas.width, canvas.height) * 0.2))
-      const windowStep = Math.max(2, Math.floor(windowSize / 4))
-      
-      for (let y = 0; y < canvas.height - windowSize; y += windowStep) {
-        for (let x = 0; x < canvas.width - windowSize; x += windowStep) {
-          let score = 0
-          let count = 0
-          for (let dy = 0; dy < windowSize; dy += 2) {
-            for (let dx = 0; dx < windowSize; dx += 2) {
-              score += saliency[(y + dy) * canvas.width + (x + dx)]
-              count++
-            }
-          }
-          score = count > 0 ? score / count : 0
-          
-          const px = (x + windowSize / 2) / canvas.width * width
-          const py = (y + windowSize / 2) / canvas.height * height
-          const scaleWeight = scale.w / 400
-          const weightedScore = score * scaleWeight
-          
-          if (weightedScore > maxScore) {
-            maxScore = weightedScore
-            bestX = px
-            bestY = py
-          }
-        }
+      if (score > maxScore) {
+        maxScore = score
+        bestX = x + windowSize / 2
       }
     }
     
-    if (maxScore < 0.01) return { x: 50, y: 50 }
+    const centerX = (bestX / canvas.width) * 100
+    const clampedX = Math.max(15, Math.min(85, centerX))
     
-    return {
-      x: Math.max(15, Math.min(85, (bestX / width) * 100)),
-      y: Math.max(15, Math.min(85, (bestY / height) * 100))
-    }
+    return { x: clampedX, y: 50 }
   } catch (e) {
-    console.warn('检测失败:', e)
     return { x: 50, y: 50 }
   }
 }
@@ -354,25 +300,41 @@ function getThumbUrl(item) {
   return 'https://www.bing.com' + (item.urlbase || '') + '_400x240.jpg'
 }
 
-// ★★★ 卡片缩略图智能居中 ★★★
+// ★★★ 卡片缩略图智能居中 - 移动端 ★★★
 async function handleCardImageLoad(item, event) {
   const img = event.target
   if (!img) return
   
+  // 桌面端不处理，保持居中
   if (window.innerWidth > 768) {
     img.style.objectPosition = '50% 50%'
     item._loaded = true
     return
   }
   
+  // 移动端：智能检测主体位置（只检测 X 轴）
   try {
-    const position = await detectMainSubjectAdvanced(img)
-    img.style.objectPosition = position.x + '% ' + position.y + '%'
-    item._loaded = true
+    // 设置超时，避免卡死
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('检测超时')), 2000)
+    })
+    
+    const position = await Promise.race([
+      detectMainSubjectAdvanced(img),
+      timeoutPromise
+    ])
+    
+    if (position && position.x) {
+      img.style.objectPosition = position.x + '% 50%'
+    } else {
+      img.style.objectPosition = '50% 50%'
+    }
   } catch (e) {
+    // 检测失败，保持居中
     img.style.objectPosition = '50% 50%'
-    item._loaded = true
   }
+  
+  item._loaded = true
 }
 
 // ============================================================
@@ -537,7 +499,7 @@ function openPreview(item) {
   document.body.style.overflow = 'hidden'
   updateTitle(previewItem.value)
   
-  // ★★★ 设置背景模糊图（参考 Nuxt 版） ★★★
+  // ★★★ 设置背景模糊图 ★★★
   const overlay = document.querySelector('.preview-overlay')
   if (overlay) {
     overlay.style.setProperty('--bg-url', 'url(' + imgSrc + ')')
@@ -604,8 +566,13 @@ function onPreviewLoad() {
   const img = previewImg.value
   if (!img) return
   
+  // 预览大图检测主体位置（X轴和Y轴）
   detectMainSubjectAdvanced(img).then(position => {
-    img.style.objectPosition = position.x + '% ' + position.y + '%'
+    if (position && position.x && position.y) {
+      img.style.objectPosition = position.x + '% ' + position.y + '%'
+    } else {
+      img.style.objectPosition = '50% 50%'
+    }
   }).catch(() => {
     img.style.objectPosition = '50% 50%'
   })
@@ -1016,7 +983,7 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 .loading-state .loading-text { font-size: 16px; color: var(--text-muted); }
 @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-/* ===== 卡片 - 移动端 3:5，桌面端 16:9 ===== */
+/* ===== ★★★ 卡片 - 移动端 3:5，桌面端 16:9 ★★★ ===== */
 .card { 
   position: relative; 
   overflow: hidden; 
@@ -1028,10 +995,13 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
   -webkit-tap-highlight-color: transparent; 
   border-radius: 0; 
   min-height: 0; 
-  aspect-ratio: 3 / 5; 
+  aspect-ratio: 3 / 5;   /* ★★★ 手机端竖屏 ★★★ */
 }
 @media (min-width: 768px) { 
-  .card { flex: 0 0 20%; aspect-ratio: 16 / 9; } 
+  .card { 
+    flex: 0 0 20%; 
+    aspect-ratio: 16 / 9; 
+  } 
 }
 
 .card img { 
@@ -1154,7 +1124,6 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 }
 .preview-overlay.active { display: flex; }
 
-/* ★★★ 背景模糊图片（参考 Nuxt 版） ★★★ */
 .preview-overlay::before { 
   content: ''; 
   position: fixed; 
@@ -1168,6 +1137,7 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
   transform: scale(1.05); 
   transition: background-image 0.5s ease;
 }
+
 .preview-container {
   position: relative;
   width: 100%;
