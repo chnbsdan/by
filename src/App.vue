@@ -46,10 +46,9 @@
           :alt="item.copyright || item.date" 
           loading="lazy" 
           crossorigin="anonymous" 
-          @load="item._loaded = true; handleCardImageLoad(item, $event)" 
+          @load="handleCardImageLoad(item, $event)" 
           @error="item._loaded = true"
           :class="{ loaded: item._loaded }"
-          style="object-position: 50% 45%;"
         />
         <div class="info">
           <div class="date">{{ item.startdate || item.date }}</div>
@@ -137,95 +136,110 @@
 import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
 
 // ============================================================
-// ★★★ 智能主体检测类 - 简化版 ★★★
+// ★★★ 智能主体检测 - 纯前端实现 ★★★
 // ============================================================
-class SmartSubjectDetector {
-  constructor() {
-    console.log('🧠 智能主体检测器已初始化')
-  }
+function detectMainSubject(imageElement) {
+  return new Promise((resolve) => {
+    const img = imageElement
+    if (!img.complete) {
+      img.onload = () => resolve(doDetect(img))
+      img.onerror = () => resolve({ x: 50, y: 50 })
+      return
+    }
+    resolve(doDetect(img))
+  })
+}
 
-  // ★★★ 简化检测：只检测主体在水平方向的位置 ★★★
-  async detectMainSubject(imageElement) {
-    const imgWidth = imageElement.naturalWidth || imageElement.width
-    const imgHeight = imageElement.naturalHeight || imageElement.height
-    if (imgWidth === 0 || imgHeight === 0) return null
-
-    try {
-      // 缩小图片提高性能
-      const canvas = document.createElement('canvas')
-      const ctx = canvas.getContext('2d', { willReadFrequently: true })
-      const maxSize = 300
-      let scale = Math.min(1, maxSize / Math.max(imgWidth, imgHeight))
-      canvas.width = Math.floor(imgWidth * scale)
-      canvas.height = Math.floor(imgHeight * scale)
-      ctx.drawImage(imageElement, 0, 0, canvas.width, canvas.height)
-
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-      const data = imageData.data
-
-      // 水平方向扫描：计算每一列的显著度
-      const colScores = new Float32Array(canvas.width)
-      const step = 2
-
-      for (let x = 0; x < canvas.width; x += step) {
-        let sum = 0, count = 0
-        for (let y = 0; y < canvas.height; y += step) {
-          const idx = (y * canvas.width + x) * 4
-          const r = data[idx]
-          const g = data[idx + 1]
-          const b = data[idx + 2]
-          // 简单的亮度方差
-          const gray = 0.299 * r + 0.587 * g + 0.114 * b
-          sum += gray
-          count++
+function doDetect(img) {
+  try {
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    const width = img.naturalWidth || img.width
+    const height = img.naturalHeight || img.height
+    
+    if (width === 0 || height === 0) return { x: 50, y: 50 }
+    
+    // 缩小图片提高性能
+    const maxSize = 300
+    let scale = Math.min(1, maxSize / Math.max(width, height))
+    const cw = Math.floor(width * scale)
+    const ch = Math.floor(height * scale)
+    canvas.width = cw
+    canvas.height = ch
+    ctx.drawImage(img, 0, 0, cw, ch)
+    
+    const imageData = ctx.getImageData(0, 0, cw, ch)
+    const data = imageData.data
+    
+    // 计算显著度
+    const step = 4
+    const scores = new Float32Array(cw * ch)
+    
+    for (let y = step; y < ch - step; y += step) {
+      for (let x = step; x < cw - step; x += step) {
+        const idx = (y * cw + x) * 4
+        const gray = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2]
+        
+        // 计算与周围像素的差异（边缘检测）
+        let diff = 0
+        let count = 0
+        for (let dy = -step; dy <= step; dy += step) {
+          for (let dx = -step; dx <= step; dx += step) {
+            if (dx === 0 && dy === 0) continue
+            const ni = ((y + dy) * cw + (x + dx)) * 4
+            const ngray = 0.299 * data[ni] + 0.587 * data[ni + 1] + 0.114 * data[ni + 2]
+            diff += Math.abs(gray - ngray)
+            count++
+          }
         }
-        colScores[x] = count > 0 ? sum / count : 0
+        scores[y * cw + x] = (gray / 255) * 0.3 + (diff / count / 255) * 0.7
       }
-
-      // 找到亮度最高的区域（主体通常较亮或对比度高）
-      let maxScore = 0
-      let bestX = Math.floor(canvas.width / 2)
-      const windowSize = Math.min(60, Math.floor(canvas.width * 0.25))
-
-      for (let x = 0; x < canvas.width - windowSize; x += 2) {
+    }
+    
+    // 找到最显著的区域
+    const windowSize = Math.min(50, Math.floor(Math.min(cw, ch) * 0.25))
+    let maxScore = -Infinity
+    let bestX = cw / 2
+    let bestY = ch / 2
+    
+    for (let y = 0; y < ch - windowSize; y += 4) {
+      for (let x = 0; x < cw - windowSize; x += 4) {
         let score = 0
-        for (let i = 0; i < windowSize && x + i < canvas.width; i++) {
-          score += colScores[x + i]
+        let count = 0
+        for (let dy = 0; dy < windowSize; dy += 4) {
+          for (let dx = 0; dx < windowSize; dx += 4) {
+            score += scores[(y + dy) * cw + (x + dx)]
+            count++
+          }
         }
+        score = count > 0 ? score / count : 0
+        
         // 中心偏好
-        const centerDist = Math.abs((x + windowSize / 2) / canvas.width - 0.5)
-        score *= (1 + (1 - centerDist) * 0.3)
+        const cx = x + windowSize / 2
+        const cy = y + windowSize / 2
+        const distFromCenter = Math.sqrt(
+          Math.pow((cx / cw) - 0.5, 2) +
+          Math.pow((cy / ch) - 0.5, 2)
+        )
+        score *= (1 + (1 - distFromCenter) * 0.3)
         
         if (score > maxScore) {
           maxScore = score
-          bestX = x + windowSize / 2
+          bestX = cx / cw
+          bestY = cy / ch
         }
       }
-
-      // 转换回原始坐标
-      const centerX = (bestX / canvas.width) * imgWidth
-      return {
-        x: centerX - 50 / scale,
-        y: imgHeight * 0.3,
-        width: 100 / scale,
-        height: imgHeight * 0.4,
-        type: 'salient'
-      }
-    } catch (e) {
-      console.warn('检测失败:', e)
-      return null
     }
-  }
-
-  async getSmartPosition(imageElement) {
-    const subject = await this.detectMainSubject(imageElement)
-    if (!subject) {
-      return { x: 50, y: 50 }
+    
+    // 如果检测失败，返回居中
+    if (maxScore < 0.01) return { x: 50, y: 50 }
+    
+    return {
+      x: Math.max(15, Math.min(85, bestX * 100)),
+      y: Math.max(15, Math.min(85, bestY * 100))
     }
-    const imgWidth = imageElement.naturalWidth || imageElement.width
-    const centerX = (subject.x + subject.width / 2) / imgWidth * 100
-    const clampedX = Math.max(20, Math.min(80, centerX))
-    return { x: clampedX, y: 50 }
+  } catch (e) {
+    return { x: 50, y: 50 }
   }
 }
 
@@ -258,9 +272,6 @@ const dropdownOpen = ref(false)
 // 评论
 const commentVisible = ref(false)
 
-// 检测器
-const detector = new SmartSubjectDetector()
-
 // ============================================================
 // 工具函数
 // ============================================================
@@ -286,24 +297,26 @@ function getThumbUrl(item) {
   return 'https://www.bing.com' + (item.urlbase || '') + '_400x240.jpg'
 }
 
-// ★★★ 卡片缩略图智能居中 - 简化版 ★★★
-function handleCardImageLoad(item, event) {
+// ★★★ 卡片缩略图智能居中 ★★★
+async function handleCardImageLoad(item, event) {
   const img = event.target
   if (!img) return
-  // 只对移动端处理
-  if (window.innerWidth > 768) return
   
-  // 使用简化的检测
-  setTimeout(() => {
-    detector.detectMainSubject(img).then(subject => {
-      if (subject) {
-        const imgWidth = img.naturalWidth || img.width
-        const centerX = (subject.x + subject.width / 2) / imgWidth * 100
-        const clampedX = Math.max(15, Math.min(85, centerX))
-        img.style.objectPosition = clampedX + '% 50%'
-      }
-    }).catch(() => {})
-  }, 100) // 延迟100ms，让图片先渲染
+  // 桌面端不处理
+  if (window.innerWidth > 768) {
+    img.style.objectPosition = '50% 50%'
+    item._loaded = true
+    return
+  }
+  
+  try {
+    const position = await detectMainSubject(img)
+    img.style.objectPosition = position.x + '% ' + position.y + '%'
+    item._loaded = true
+  } catch (e) {
+    img.style.objectPosition = '50% 50%'
+    item._loaded = true
+  }
 }
 
 // ============================================================
@@ -510,7 +523,18 @@ function updateTitle(item) {
   }
 }
 
-function onPreviewLoad() {}
+// ★★★ 预览大图智能居中 ★★★
+async function onPreviewLoad() {
+  const img = previewImg.value
+  if (!img) return
+  
+  try {
+    const position = await detectMainSubject(img)
+    img.style.objectPosition = position.x + '% ' + position.y + '%'
+  } catch (e) {
+    img.style.objectPosition = '50% 50%'
+  }
+}
 
 function toggleToolbar() {
   toolbarVisible.value = !toolbarVisible.value
@@ -674,7 +698,7 @@ function toggleTheme() {
 }
 
 // ============================================================
-// ★★★ 评论 - 修复加载 ★★★
+// 评论
 // ============================================================
 function openComment() {
   commentVisible.value = true
@@ -690,7 +714,6 @@ function openComment() {
         try {
           const container = document.querySelector('#tcomment')
           if (!container) return
-          // 检查是否已经初始化过
           if (container.querySelector('.tk-comment')) return
           
           twikoo.init({
@@ -704,7 +727,6 @@ function openComment() {
         }
       } else if (retries < maxRetries) {
         retries++
-        console.log(`⏳ 等待 Twikoo 加载... (${retries}/${maxRetries})`)
         setTimeout(initTwikoo, 500)
       } else {
         const container = document.querySelector('#tcomment')
@@ -713,7 +735,6 @@ function openComment() {
         }
       }
     }
-    
     initTwikoo()
   })
 }
@@ -876,7 +897,7 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 .loading-state .loading-text { font-size: 16px; color: var(--text-muted); }
 @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-/* ===== 卡片 - 响应式宽高比 ===== */
+/* ===== 卡片 - 移动端 3:5，桌面端 16:9 ===== */
 .card { 
   position: relative; 
   overflow: hidden; 
@@ -892,9 +913,6 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 }
 @media (min-width: 768px) { 
   .card { flex: 0 0 20%; aspect-ratio: 16 / 9; } 
-}
-@media (max-width: 767px) { 
-  .card { flex: 0 0 50%; aspect-ratio: 3 / 5; } 
 }
 
 .card img { 
