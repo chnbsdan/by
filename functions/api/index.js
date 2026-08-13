@@ -1,3 +1,4 @@
+// functions/api/index.js
 export async function onRequest(context) {
   const { request } = context;
   const url = new URL(request.url);
@@ -6,7 +7,6 @@ export async function onRequest(context) {
   let totalCount = '--';
   let todayDate = '--';
   try {
-    // ★★★ 修复：public 是静态资源根目录，访问路径不需要加 /public ★★★
     const dataUrl = `${base}/json/data.json`;
     const res = await fetch(dataUrl, {
       headers: {
@@ -618,6 +618,126 @@ export async function onRequest(context) {
       opacity: 1;
       transform: translateX(-50%) translateY(0);
     }
+    /* ★★★ 评论弹窗样式 ★★★ */
+    .comment-modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      z-index: 9999;
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      justify-content: center;
+      align-items: center;
+      animation: fadeInModal 0.25s ease;
+    }
+    .comment-modal-overlay.show {
+      display: flex;
+    }
+    .comment-modal-box {
+      background: #ffffff;
+      border-radius: 16px;
+      width: 92%;
+      max-width: 720px;
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      animation: slideUpModal 0.3s ease;
+      overflow: hidden;
+    }
+    .comment-modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 24px 14px;
+      border-bottom: 1px solid #e8e8e8;
+      flex-shrink: 0;
+    }
+    .comment-modal-header h2 {
+      font-size: 18px;
+      font-weight: 600;
+      color: #1a1a2e;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .comment-modal-header h2 i {
+      color: #4fc3f7;
+    }
+    .comment-modal-close {
+      background: none;
+      border: none;
+      color: #999;
+      font-size: 20px;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 6px;
+      transition: 0.2s;
+    }
+    .comment-modal-close:hover {
+      background: #f0f0f0;
+      color: #333;
+    }
+    .comment-modal-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 24px 16px;
+      background: #ffffff;
+    }
+    .comment-modal-body::-webkit-scrollbar {
+      width: 4px;
+    }
+    .comment-modal-body::-webkit-scrollbar-thumb {
+      background: #ccc;
+      border-radius: 2px;
+    }
+    [data-theme="light"] .comment-modal-box {
+      background: #ffffff;
+    }
+    [data-theme="light"] .comment-modal-header {
+      border-bottom-color: #e8e8e8;
+    }
+    [data-theme="light"] .comment-modal-header h2 {
+      color: #1a1a2e;
+    }
+    [data-theme="light"] .comment-modal-body {
+      background: #ffffff;
+    }
+    /* 暗色模式 */
+    @media (prefers-color-scheme: dark) {
+      .comment-modal-box {
+        background: #1a1a2e !important;
+        border-color: #2a2a4e !important;
+      }
+      .comment-modal-header {
+        border-bottom-color: #2a2a4e !important;
+      }
+      .comment-modal-header h2 {
+        color: #e0e0e0 !important;
+      }
+      .comment-modal-header h2 i {
+        color: #4fc3f7 !important;
+      }
+      .comment-modal-close {
+        color: #888 !important;
+      }
+      .comment-modal-close:hover {
+        background: #2a2a4e !important;
+        color: #e0e0e0 !important;
+      }
+      .comment-modal-body {
+        background: #1a1a2e !important;
+      }
+    }
+    @keyframes fadeInModal {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes slideUpModal {
+      from { opacity: 0; transform: translateY(30px) scale(0.96); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
     @media (max-width: 768px) {
       body { padding: 16px 14px 40px; }
       .header-left h1 { font-size: 24px; }
@@ -631,6 +751,10 @@ export async function onRequest(context) {
       footer { flex-direction: column; text-align: center; }
       .header-right .badge { font-size: 11px; padding: 4px 12px; }
       .glow-orb { display: none; }
+      .comment-modal-box { width: 95%; max-height: 90vh; border-radius: 12px; }
+      .comment-modal-header { padding: 14px 16px 10px; }
+      .comment-modal-header h2 { font-size: 16px; }
+      .comment-modal-body { padding: 14px 16px 12px; }
     }
     @media (max-width: 480px) {
       .stats { grid-template-columns: 1fr; }
@@ -641,6 +765,9 @@ export async function onRequest(context) {
       .header-right { justify-content: flex-start; }
       .header::after { width: 40px; }
       .toast { bottom: 70px; font-size: 13px; padding: 8px 20px; }
+      .comment-modal-box { width: 98%; max-height: 92vh; border-radius: 8px; }
+      .comment-modal-header h2 { font-size: 14px; }
+      .comment-modal-body { padding: 10px 12px 8px; }
     }
   </style>
 </head>
@@ -789,16 +916,36 @@ export async function onRequest(context) {
       <div class="footer-links">
         <a href="/" title="首页"><i class="fas fa-home"></i></a>
         <a href="https://github.com/chnbsdan/Bing-Wallpaper-Archive" target="_blank" title="GitHub"><i class="fab fa-github"></i></a>
-        <a href="/comment.html" title="反馈" target="_blank"><i class="fas fa-bug"></i></a>
+        <a href="#" title="反馈" id="feedbackLink"><i class="fas fa-bug"></i></a>
       </div>
     </footer>
   </div>
+
+  <!-- ★★★ 评论弹窗 ★★★ -->
+  <div id="commentModal" class="comment-modal-overlay">
+    <div class="comment-modal-box">
+      <div class="comment-modal-header">
+        <h2><i class="fas fa-comment-dots"></i> 留言反馈</h2>
+        <button class="comment-modal-close" id="closeCommentModalBtn"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="comment-modal-body">
+        <iframe 
+          src="/comment.html" 
+          frameborder="0" 
+          style="width:100%;min-height:400px;border:none;background:transparent;"
+        ></iframe>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast">✅ 已复制</div>
+
   <script>
     var themeToggle = document.getElementById('themeToggle');
     var themeIcon = document.getElementById('themeIcon');
     var themeLabel = document.getElementById('themeLabel');
     var currentTheme = localStorage.getItem('apiTheme') || 'dark';
+
     function setTheme(theme) {
       currentTheme = theme;
       document.documentElement.setAttribute('data-theme', theme);
@@ -811,15 +958,18 @@ export async function onRequest(context) {
         themeLabel.textContent = '亮色';
       }
     }
+
     themeToggle.addEventListener('click', function() {
       setTheme(currentTheme === 'dark' ? 'light' : 'dark');
     });
     setTheme(currentTheme);
+
     var now = new Date();
     var h = String(now.getHours()).padStart(2, '0');
     var m = String(now.getMinutes()).padStart(2, '0');
     var updateEl = document.getElementById('updateTime');
     if (updateEl) updateEl.textContent = h + ':' + m;
+
     function copyText(text) {
       if (navigator.clipboard) {
         navigator.clipboard.writeText(text).then(function() {
@@ -831,6 +981,7 @@ export async function onRequest(context) {
         fallbackCopy(text);
       }
     }
+
     function fallbackCopy(text) {
       var input = document.createElement('input');
       input.value = text;
@@ -844,6 +995,7 @@ export async function onRequest(context) {
       }
       document.body.removeChild(input);
     }
+
     function showToast(msg) {
       var toast = document.getElementById('toast');
       toast.textContent = msg;
@@ -853,6 +1005,52 @@ export async function onRequest(context) {
         toast.classList.remove('show');
       }, 2000);
     }
+
+    // ============================================================
+    // ★★★ 评论弹窗控制 ★★★
+    // ============================================================
+    var feedbackLink = document.getElementById('feedbackLink');
+    var commentModal = document.getElementById('commentModal');
+    var closeCommentModalBtn = document.getElementById('closeCommentModalBtn');
+
+    function openCommentModal() {
+      if (commentModal) {
+        commentModal.classList.add('show');
+        document.body.style.overflow = 'hidden';
+      }
+    }
+
+    function closeCommentModal() {
+      if (commentModal) {
+        commentModal.classList.remove('show');
+        document.body.style.overflow = '';
+      }
+    }
+
+    if (feedbackLink) {
+      feedbackLink.addEventListener('click', function(e) {
+        e.preventDefault();
+        openCommentModal();
+      });
+    }
+
+    if (closeCommentModalBtn) {
+      closeCommentModalBtn.addEventListener('click', closeCommentModal);
+    }
+
+    if (commentModal) {
+      commentModal.addEventListener('click', function(e) {
+        if (e.target === commentModal) {
+          closeCommentModal();
+        }
+      });
+    }
+
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape' && commentModal && commentModal.classList.contains('show')) {
+        closeCommentModal();
+      }
+    });
   </script>
 </body>
 </html>
