@@ -6,7 +6,8 @@ export async function onRequest(context) {
   let totalCount = '--';
   let todayDate = '--';
   try {
-    const dataUrl = `${base}/public/json/data.json`;
+    // ★★★ 修复：public 是静态资源根目录，访问路径不需要加 /public ★★★
+    const dataUrl = `${base}/json/data.json`;
     const res = await fetch(dataUrl, {
       headers: {
         'Accept': 'application/json',
@@ -20,6 +21,8 @@ export async function onRequest(context) {
         data.sort((a, b) => b.startdate.localeCompare(a.startdate));
         todayDate = data[0].startdate || '--';
       }
+    } else {
+      console.error('data.json 加载失败:', res.status);
     }
   } catch (e) {
     console.error('Fetch error:', e.message);
