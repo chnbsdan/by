@@ -1,3 +1,4 @@
+// functions/api/list.js
 export async function onRequest(context) {
   const { request } = context;
   const url = new URL(request.url);
@@ -25,10 +26,8 @@ export async function onRequest(context) {
 
   try {
     const host = url.origin;
-    const jsonUrl = `${host}/public/json/data.json`;
-    const resp = await fetch(jsonUrl, {
-      headers: { 'User-Agent': 'CloudflarePages-Function' }
-    });
+    const jsonUrl = `${host}/json/data.json`;
+    const resp = await fetch(new Request(jsonUrl, request));
     if (!resp.ok) {
       return new Response(JSON.stringify({
         error: '无法加载壁纸数据'
@@ -38,7 +37,7 @@ export async function onRequest(context) {
       });
     }
 
-    const data = await resp.json();
+    let data = await resp.json();
     if (!Array.isArray(data) || data.length === 0) {
       return new Response(JSON.stringify({
         error: '暂无壁纸数据'
@@ -48,6 +47,7 @@ export async function onRequest(context) {
       });
     }
 
+    // ★★★ 按 startdate 降序排序 ★★★
     data.sort((a, b) => b.startdate.localeCompare(a.startdate));
 
     const total = data.length;
@@ -57,15 +57,18 @@ export async function onRequest(context) {
     const end = Math.min(start + pageSize, total);
     const items = data.slice(start, end);
 
+    // ★★★ 格式化数据，统一返回格式 ★★★
     const formattedItems = items.map(item => {
       const isHistory = item.isHistory === true;
       let imageUrl = '';
       let thumbUrl = '';
 
       if (isHistory) {
+        // 历史数据：直接使用完整链接
         imageUrl = item.urlbase || '';
         thumbUrl = item.thumb || item.urlbase || '';
       } else {
+        // 必应数据：拼接域名
         const baseUrl = 'https://www.bing.com';
         imageUrl = `${baseUrl}${item.urlbase}_UHD.jpg`;
         thumbUrl = `${baseUrl}${item.urlbase}_400x240.jpg`;
