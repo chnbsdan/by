@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>留言反馈</title>
+  <script src="https://cdn.jsdelivr.net/npm/twikoo@1.6.41/dist/twikoo.min.js">
+  </script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      background: #ffffff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      padding: 20px;
+      min-height: 100vh;
+    }
+    #tcomment {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    @media (prefers-color-scheme: dark) {
+      body {
+        background: #1a1a2e;
+      }
+      .tk-comments,
+      .tk-comment,
+      .tk-input,
+      .tk-submit,
+      .tk-meta,
+      .tk-loading,
+      .tk-footer,
+      .tk-powered {
+        color: #e0e0e0 !important;
+      }
+      .tk-input {
+        background: #2a2a4e !important;
+        border: 1px solid #3a3a5e !important;
+      }
+      .tk-input textarea,
+      .tk-input input {
+        color: #e0e0e0 !important;
+        background: transparent !important;
+      }
+      .tk-input textarea::placeholder,
+      .tk-input input::placeholder {
+        color: #888 !important;
+      }
+      .tk-comment .tk-nick,
+      .tk-comment .tk-nick a {
+        color: #4fc3f7 !important;
+      }
+      .tk-comment .tk-content,
+      .tk-comment .tk-content p {
+        color: #e0e0e0 !important;
+      }
+      .tk-comment .tk-time {
+        color: #888 !important;
+      }
+      .tk-comment .tk-actions .tk-action {
+        color: #888 !important;
+      }
+      .tk-comment .tk-actions .tk-action:hover {
+        color: #4fc3f7 !important;
+      }
+      .tk-submit .tk-btn {
+        background: #4fc3f7 !important;
+        color: #1a1a2e !important;
+      }
+      .tk-meta .tk-count {
+        color: #888 !important;
+      }
+      .tk-meta .tk-order {
+        color: #888 !important;
+      }
+      .tk-meta .tk-order.active {
+        color: #4fc3f7 !important;
+      }
+      .tk-loading .tk-load-more {
+        color: #888 !important;
+      }
+      .tk-loading .tk-load-more:hover {
+        color: #4fc3f7 !important;
+      }
+      .tk-empty {
+        color: #888 !important;
+      }
+      .tk-footer,
+      .tk-powered,
+      .tk-footer a,
+      .tk-powered a {
+        color: #888 !important;
+      }
+      .tk-footer a:hover,
+      .tk-powered a:hover {
+        color: #aaa !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="tcomment"></div>
+  <script>
+    function initTwikoo() {
+      if (typeof twikoo !== 'undefined') {
+        try {
+          twikoo.init({
+            envId: 'https://twikoo.hangdn.net',
+            el: '#tcomment',
+            lang: 'zh-CN',
+          })
+          console.log('✅ 评论加载成功')
+        } catch (e) {
+          console.warn('评论初始化失败:', e)
+          document.getElementById('tcomment').innerHTML =
+            '<p style="color:#999;text-align:center;padding:40px;">评论加载失败，请刷新重试</p>'
+        }
+      } else {
+        setTimeout(initTwikoo, 500)
+      }
+    }
+
+    if (document.readyState === 'complete') {
+      initTwikoo()
+    } else {
+      document.addEventListener('DOMContentLoaded', initTwikoo)
+    }
+
+    setTimeout(() => {
+      const container = document.getElementById('tcomment')
+      if (container && !container.querySelector('.tk-comment') && !container.querySelector('.tk-loading')) {
+        container.innerHTML =
+          '<p style="color:#999;text-align:center;padding:40px;">评论加载超时，请<a href="javascript:location.reload()" style="color:#4fc3f7;">刷新页面</a>重试</p>'
+      }
+    }, 10000)
+  </script>
+</body>
+</html>
