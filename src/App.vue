@@ -49,6 +49,7 @@
           @load="item._loaded = true; handleCardImageLoad(item, $event)" 
           @error="item._loaded = true"
           :class="{ loaded: item._loaded }"
+          style="object-position: 50% 45%;"
         />
         <div class="info">
           <div class="date">{{ item.startdate || item.date }}</div>
@@ -136,22 +137,24 @@
 import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
 
 // ============================================================
-// ★★★ 智能主体检测类 ★★★
+// ★★★ 智能主体检测类 - 简化版 ★★★
 // ============================================================
 class SmartSubjectDetector {
   constructor() {
     console.log('🧠 智能主体检测器已初始化')
   }
 
+  // ★★★ 简化检测：只检测主体在水平方向的位置 ★★★
   async detectMainSubject(imageElement) {
     const imgWidth = imageElement.naturalWidth || imageElement.width
     const imgHeight = imageElement.naturalHeight || imageElement.height
     if (imgWidth === 0 || imgHeight === 0) return null
 
     try {
+      // 缩小图片提高性能
       const canvas = document.createElement('canvas')
       const ctx = canvas.getContext('2d', { willReadFrequently: true })
-      const maxSize = 400
+      const maxSize = 300
       let scale = Math.min(1, maxSize / Math.max(imgWidth, imgHeight))
       canvas.width = Math.floor(imgWidth * scale)
       canvas.height = Math.floor(imgHeight * scale)
@@ -160,149 +163,58 @@ class SmartSubjectDetector {
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
       const data = imageData.data
 
-      const saliency = this.computeSaliencyMap(data, canvas.width, canvas.height)
-      const bestRegion = this.findBestRegion(saliency, canvas.width, canvas.height)
+      // 水平方向扫描：计算每一列的显著度
+      const colScores = new Float32Array(canvas.width)
+      const step = 2
 
-      if (bestRegion) {
-        return {
-          x: bestRegion.x / scale,
-          y: bestRegion.y / scale,
-          width: bestRegion.width / scale,
-          height: bestRegion.height / scale,
-          type: 'salient'
-        }
-      }
-      return null
-    } catch (e) {
-      return null
-    }
-  }
-
-  computeSaliencyMap(data, width, height) {
-    const saliency = new Float32Array(width * height)
-    const windowSize = Math.min(30, Math.floor(Math.min(width, height) * 0.15))
-    const halfWindow = Math.floor(windowSize / 2)
-
-    for (let y = halfWindow; y < height - halfWindow; y += 2) {
-      for (let x = halfWindow; x < width - halfWindow; x += 2) {
-        const idx = (y * width + x) * 4
-        const centerGray = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2]
-
+      for (let x = 0; x < canvas.width; x += step) {
         let sum = 0, count = 0
-        for (let dy = -halfWindow; dy <= halfWindow; dy += 2) {
-          for (let dx = -halfWindow; dx <= halfWindow; dx += 2) {
-            if (dx === 0 && dy === 0) continue
-            const ni = ((y + dy) * width + (x + dx)) * 4
-            const ngray = 0.299 * data[ni] + 0.587 * data[ni + 1] + 0.114 * data[ni + 2]
-            sum += ngray
-            count++
-          }
+        for (let y = 0; y < canvas.height; y += step) {
+          const idx = (y * canvas.width + x) * 4
+          const r = data[idx]
+          const g = data[idx + 1]
+          const b = data[idx + 2]
+          // 简单的亮度方差
+          const gray = 0.299 * r + 0.587 * g + 0.114 * b
+          sum += gray
+          count++
         }
-        const avgGray = sum / count
-        const contrast = Math.abs(centerGray - avgGray)
-        const colorVar = this.calculateColorVariance(data, width, height, x, y, 3)
-        saliency[y * width + x] = contrast * 0.7 + colorVar * 0.3
+        colScores[x] = count > 0 ? sum / count : 0
       }
-    }
-    return this.gaussianBlur(saliency, width, height, 3)
-  }
 
-  calculateColorVariance(data, width, height, cx, cy, radius) {
-    let sum = 0, sumSq = 0, count = 0
-    for (let dy = -radius; dy <= radius; dy++) {
-      for (let dx = -radius; dx <= radius; dx++) {
-        const x = cx + dx, y = cy + dy
-        if (x < 0 || x >= width || y < 0 || y >= height) continue
-        const idx = (y * width + x) * 4
-        const gray = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2]
-        sum += gray
-        sumSq += gray * gray
-        count++
-      }
-    }
-    if (count === 0) return 0
-    const mean = sum / count
-    return sumSq / count - mean * mean
-  }
+      // 找到亮度最高的区域（主体通常较亮或对比度高）
+      let maxScore = 0
+      let bestX = Math.floor(canvas.width / 2)
+      const windowSize = Math.min(60, Math.floor(canvas.width * 0.25))
 
-  gaussianBlur(data, width, height, radius) {
-    const result = new Float32Array(data.length)
-    const kernel = this.gaussianKernel(radius)
-    const half = Math.floor(radius / 2)
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        let sum = 0, weightSum = 0
-        for (let ky = -half; ky <= half; ky++) {
-          for (let kx = -half; kx <= half; kx++) {
-            const px = x + kx, py = y + ky
-            if (px < 0 || px >= width || py < 0 || py >= height) continue
-            const weight = kernel[ky + half][kx + half]
-            sum += data[py * width + px] * weight
-            weightSum += weight
-          }
+      for (let x = 0; x < canvas.width - windowSize; x += 2) {
+        let score = 0
+        for (let i = 0; i < windowSize && x + i < canvas.width; i++) {
+          score += colScores[x + i]
         }
-        result[y * width + x] = weightSum > 0 ? sum / weightSum : 0
-      }
-    }
-    return result
-  }
-
-  gaussianKernel(size) {
-    const kernel = []
-    const sigma = size / 3
-    let sum = 0
-    for (let y = 0; y < size; y++) {
-      kernel[y] = []
-      for (let x = 0; x < size; x++) {
-        const dx = x - Math.floor(size / 2)
-        const dy = y - Math.floor(size / 2)
-        const value = Math.exp(-(dx * dx + dy * dy) / (2 * sigma * sigma))
-        kernel[y][x] = value
-        sum += value
-      }
-    }
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-        kernel[y][x] /= sum
-      }
-    }
-    return kernel
-  }
-
-  findBestRegion(saliency, width, height) {
-    const regionSize = Math.min(120, Math.floor(Math.min(width, height) * 0.35))
-    const step = Math.max(5, Math.floor(regionSize / 5))
-    let maxScore = -Infinity
-    let bestX = 0, bestY = 0
-
-    for (let y = 0; y <= height - regionSize; y += step) {
-      for (let x = 0; x <= width - regionSize; x += step) {
-        let score = 0, count = 0
-        for (let dy = 0; dy < regionSize; dy += 2) {
-          for (let dx = 0; dx < regionSize; dx += 2) {
-            score += saliency[(y + dy) * width + (x + dx)]
-            count++
-          }
-        }
-        score = count > 0 ? score / count : 0
-        const cx = x + regionSize / 2
-        const cy = y + regionSize / 2
-        const distFromCenter = Math.sqrt(
-          Math.pow((cx / width) - 0.5, 2) +
-          Math.pow((cy / height) - 0.5, 2)
-        )
-        score *= (1 + (1 - distFromCenter) * 0.4)
+        // 中心偏好
+        const centerDist = Math.abs((x + windowSize / 2) / canvas.width - 0.5)
+        score *= (1 + (1 - centerDist) * 0.3)
+        
         if (score > maxScore) {
           maxScore = score
-          bestX = x
-          bestY = y
+          bestX = x + windowSize / 2
         }
       }
+
+      // 转换回原始坐标
+      const centerX = (bestX / canvas.width) * imgWidth
+      return {
+        x: centerX - 50 / scale,
+        y: imgHeight * 0.3,
+        width: 100 / scale,
+        height: imgHeight * 0.4,
+        type: 'salient'
+      }
+    } catch (e) {
+      console.warn('检测失败:', e)
+      return null
     }
-    if (maxScore > 0) {
-      return { x: bestX, y: bestY, width: regionSize, height: regionSize, score: maxScore }
-    }
-    return null
   }
 
   async getSmartPosition(imageElement) {
@@ -311,12 +223,9 @@ class SmartSubjectDetector {
       return { x: 50, y: 50 }
     }
     const imgWidth = imageElement.naturalWidth || imageElement.width
-    const imgHeight = imageElement.naturalHeight || imageElement.height
     const centerX = (subject.x + subject.width / 2) / imgWidth * 100
-    const centerY = (subject.y + subject.height / 2) / imgHeight * 100
-    const clampedX = Math.max(25, Math.min(75, centerX))
-    const clampedY = Math.max(25, Math.min(75, centerY))
-    return { x: clampedX, y: clampedY }
+    const clampedX = Math.max(20, Math.min(80, centerX))
+    return { x: clampedX, y: 50 }
   }
 }
 
@@ -328,7 +237,7 @@ const filteredData = ref([])
 const displayData = ref([])
 const currentPage = ref(1)
 const PAGE_SIZE = 30
-const loading = ref(true)  // ★★★ 默认 true，显示加载状态 ★★★
+const loading = ref(true)
 const loadingMore = ref(false)
 const hasMore = ref(true)
 const searchKeyword = ref('')
@@ -377,21 +286,24 @@ function getThumbUrl(item) {
   return 'https://www.bing.com' + (item.urlbase || '') + '_400x240.jpg'
 }
 
-// ★★★ 卡片缩略图智能居中 ★★★
+// ★★★ 卡片缩略图智能居中 - 简化版 ★★★
 function handleCardImageLoad(item, event) {
   const img = event.target
   if (!img) return
-  // 只对移动端处理（宽度小于 768px）
+  // 只对移动端处理
   if (window.innerWidth > 768) return
   
-  detector.detectMainSubject(img).then(subject => {
-    if (subject) {
-      const imgWidth = img.naturalWidth || img.width
-      const centerX = (subject.x + subject.width / 2) / imgWidth * 100
-      const clampedX = Math.max(15, Math.min(85, centerX))
-      img.style.objectPosition = clampedX + '% 50%'
-    }
-  }).catch(() => {})
+  // 使用简化的检测
+  setTimeout(() => {
+    detector.detectMainSubject(img).then(subject => {
+      if (subject) {
+        const imgWidth = img.naturalWidth || img.width
+        const centerX = (subject.x + subject.width / 2) / imgWidth * 100
+        const clampedX = Math.max(15, Math.min(85, centerX))
+        img.style.objectPosition = clampedX + '% 50%'
+      }
+    }).catch(() => {})
+  }, 100) // 延迟100ms，让图片先渲染
 }
 
 // ============================================================
@@ -605,7 +517,7 @@ function toggleToolbar() {
 }
 
 // ============================================================
-// 下载
+// 下载 - 智能裁剪手机比例
 // ============================================================
 function getDownloadFileName(item, resolution) {
   const urlbase = item.urlbase || ''
@@ -640,6 +552,7 @@ function getDownloadFileName(item, resolution) {
   return 'wallpaper_' + (item.startdate || item.date || Date.now()) + '_' + resolution + '.jpg'
 }
 
+// ★★★ 智能裁剪 - 手机比例 ★★★
 async function smartCropDownload(blob, fileName, resolution) {
   return new Promise((resolve) => {
     const img = new Image()
@@ -761,7 +674,7 @@ function toggleTheme() {
 }
 
 // ============================================================
-// 评论
+// ★★★ 评论 - 修复加载 ★★★
 // ============================================================
 function openComment() {
   commentVisible.value = true
@@ -769,18 +682,39 @@ function openComment() {
   if (navOpen.value) navOpen.value = false
   
   nextTick(() => {
-    const loadTwikoo = () => {
+    let retries = 0
+    const maxRetries = 10
+    
+    const initTwikoo = () => {
       if (typeof twikoo !== 'undefined') {
-        twikoo.init({
-          envId: 'https://twikoo.hangdn.net',
-          el: '#tcomment',
-          lang: 'zh-CN',
-        })
+        try {
+          const container = document.querySelector('#tcomment')
+          if (!container) return
+          // 检查是否已经初始化过
+          if (container.querySelector('.tk-comment')) return
+          
+          twikoo.init({
+            envId: 'https://twikoo.hangdn.net',
+            el: '#tcomment',
+            lang: 'zh-CN',
+          })
+          console.log('✅ Twikoo 评论加载成功')
+        } catch (e) {
+          console.warn('Twikoo 初始化失败:', e)
+        }
+      } else if (retries < maxRetries) {
+        retries++
+        console.log(`⏳ 等待 Twikoo 加载... (${retries}/${maxRetries})`)
+        setTimeout(initTwikoo, 500)
       } else {
-        setTimeout(loadTwikoo, 500)
+        const container = document.querySelector('#tcomment')
+        if (container) {
+          container.innerHTML = '<p style="color:#999;text-align:center;padding:20px;">评论加载失败，请刷新后重试</p>'
+        }
       }
     }
-    loadTwikoo()
+    
+    initTwikoo()
   })
 }
 
