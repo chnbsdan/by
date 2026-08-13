@@ -1146,7 +1146,7 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
   position: fixed; 
   top: 0; left: 0; right: 0; bottom: 0; 
   z-index: 2000; 
-  background: rgba(0,0,0,0.6);
+  background: rgba(0,0,0,0.4);
   justify-content: center; 
   align-items: center; 
   cursor: default; 
@@ -1163,12 +1163,11 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
   right: -20px; 
   bottom: -20px; 
   background: center/cover no-repeat;
-  filter: blur(30px) brightness(0.5);
+  filter: blur(30px) brightness(0.75);
   z-index: 0; 
   transform: scale(1.05); 
   transition: background-image 0.5s ease;
 }
-
 .preview-container {
   position: relative;
   width: 100%;
