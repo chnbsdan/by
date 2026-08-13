@@ -69,15 +69,20 @@
 
     <button v-show="showBackToTop" class="back-to-top" @click="scrollToTop"><i class="fas fa-arrow-up"></i></button>
 
-    <!-- ★★★ 预览 - 支持缩放 ★★★ -->
+    <!-- ★★★ 预览 ★★★ -->
     <div v-if="previewVisible" class="preview-overlay active" @click.self="closePreview">
       <button class="arrow arrow-left" @click.stop="prevPreview"><i class="fas fa-chevron-left"></i></button>
       <button class="arrow arrow-right" @click.stop="nextPreview"><i class="fas fa-chevron-right"></i></button>
 
-      <div class="preview-container" ref="previewContainer">
+      <div class="preview-container">
+        <div class="preview-loading" v-if="!imageLoaded">
+          <div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i></div>
+          <div class="loading-text">加载中...</div>
+        </div>
         <img 
           ref="previewImg" 
           class="preview-image" 
+          :class="{ loaded: imageLoaded }"
           :src="previewUrl" 
           alt="预览" 
           crossorigin="anonymous" 
@@ -309,6 +314,7 @@ const previewUrl = ref('')
 const toolbarVisible = ref(true)
 const dropdownOpen = ref(false)
 const dropdownRef = ref(null)
+const imageLoaded = ref(false)
 
 // ★★★ 缩放状态 ★★★
 const scale = ref(1)
@@ -516,15 +522,20 @@ function openPreview(item) {
   )
   previewIndex.value = idx >= 0 ? idx : allData.value.indexOf(item)
   previewItem.value = allData.value[previewIndex.value]
+  
+  // 重置状态
+  imageLoaded.value = false
+  scale.value = 1
+  translateX.value = 0
+  translateY.value = 0
+  
   previewUrl.value = getImageUrl(previewItem.value, 'fhd')
   previewVisible.value = true
   toolbarVisible.value = true
   dropdownOpen.value = false
-  scale.value = 1
-  translateX.value = 0
-  translateY.value = 0
   document.body.style.overflow = 'hidden'
   updateTitle(previewItem.value)
+  
   const overlay = document.querySelector('.preview-overlay')
   if (overlay) {
     overlay.style.setProperty('--bg-url', 'url(' + previewUrl.value + ')')
@@ -534,6 +545,7 @@ function openPreview(item) {
 function closePreview() {
   previewVisible.value = false
   toolbarVisible.value = true
+  imageLoaded.value = false
   document.body.style.overflow = 'auto'
   document.title = '必应壁纸 | 每日一图，带你领略世界之美'
 }
@@ -553,12 +565,15 @@ function nextPreview() {
 }
 
 function updatePreview() {
-  previewItem.value = allData.value[previewIndex.value]
-  previewUrl.value = getImageUrl(previewItem.value, 'fhd')
+  imageLoaded.value = false
   scale.value = 1
   translateX.value = 0
   translateY.value = 0
+  
+  previewItem.value = allData.value[previewIndex.value]
+  previewUrl.value = getImageUrl(previewItem.value, 'fhd')
   updateTitle(previewItem.value)
+  
   const overlay = document.querySelector('.preview-overlay')
   if (overlay) {
     overlay.style.setProperty('--bg-url', 'url(' + previewUrl.value + ')')
@@ -579,17 +594,17 @@ function updateTitle(item) {
   }
 }
 
-// ★★★ 预览大图智能居中 ★★★
-async function onPreviewLoad() {
+// ★★★ 预览大图智能居中 + 加载完成 ★★★
+function onPreviewLoad() {
+  imageLoaded.value = true
   const img = previewImg.value
   if (!img) return
   
-  try {
-    const position = await detectMainSubjectAdvanced(img)
+  detectMainSubjectAdvanced(img).then(position => {
     img.style.objectPosition = position.x + '% ' + position.y + '%'
-  } catch (e) {
+  }).catch(() => {
     img.style.objectPosition = '50% 50%'
-  }
+  })
 }
 
 function toggleToolbar() {
@@ -1127,9 +1142,9 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
   position: fixed; 
   top: 0; left: 0; right: 0; bottom: 0; 
   z-index: 2000; 
-  background: rgba(255,255,255,0.75);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(0,0,0,0.2);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   justify-content: center; 
   align-items: center; 
   cursor: default; 
@@ -1137,46 +1152,61 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 }
 .preview-overlay.active { display: flex; }
 .preview-overlay::before { 
-  content: ''; 
-  position: fixed; 
-  top: -10px; left: -10px; right: -10px; bottom: -10px; 
-  background: rgba(255,255,255,0.5);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  z-index: -1; 
-  transform: scale(1.05); 
+  display: none;
 }
 
-.preview-container { 
-  position: relative; 
-  width: 100%; 
-  height: 100%; 
-  display: flex; 
-  flex-direction: column; 
-  align-items: center; 
-  justify-content: center; 
-  cursor: default; 
-  overflow: hidden; 
-  touch-action: none;
+.preview-container {
+  position: relative;
+  width: 92vw;
+  height: 85vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.25);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
 }
-.preview-image { 
-  width: 100%; 
-  height: 100%; 
-  object-fit: contain; 
-  object-position: 50% 50%; 
-  border-radius: 0; 
-  box-shadow: none; 
-  background: transparent; 
-  pointer-events: auto; 
-  cursor: pointer; 
-  z-index: 5; 
-  position: relative; 
-  -webkit-user-select: none; 
-  user-select: none; 
-  -webkit-touch-callout: none; 
-  transition: transform 0.1s ease;
-  max-width: 100vw;
-  max-height: 100vh;
+
+.preview-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 16px;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+.preview-image.loaded {
+  opacity: 1;
+}
+
+.preview-loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  color: rgba(255,255,255,0.6);
+  z-index: 1;
+  pointer-events: none;
+}
+.preview-loading .loading-spinner {
+  font-size: 40px;
+  margin-bottom: 12px;
+  color: rgba(255,255,255,0.4);
+}
+.preview-loading .loading-text {
+  font-size: 14px;
+}
+
+@media (max-width: 768px) {
+  .preview-container {
+    width: 96vw;
+    height: 80vh;
+    border-radius: 12px;
+  }
 }
 
 /* ===== 箭头 ===== */
