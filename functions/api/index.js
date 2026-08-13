@@ -59,7 +59,7 @@ export async function onRequest(context) {
       --transition: 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
     }
     [data-theme="light"] {
-      --bg-primary: #faf0e6;
+      --bg-primary: #ffffff;
       --bg-secondary: #ffffff;
       --bg-card: rgba(255,248,240,0.7);
       --bg-card-hover: rgba(255,248,240,0.95);
