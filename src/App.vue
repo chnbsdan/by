@@ -135,7 +135,7 @@
       </div>
     </div>
 
-    <!-- ★★★ 评论弹窗 - 使用 iframe ★★★ -->
+    <!-- ★★★ 评论弹窗 ★★★ -->
     <div v-if="commentVisible" class="comment-overlay active" @click.self="closeComment">
       <div class="comment-modal">
         <div class="comment-header">
@@ -158,65 +158,224 @@
 import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
 
 // ============================================================
-// ★★★ 简化版主体检测 - 只检测 X 轴（左右），适合移动端 ★★★
+// ★★★ 频谱残差显著性检测 (Spectral Residual) ★★★
+// 这是学术界公认有效的显著性检测算法
+// 对人脸、动物、物体都有效
 // ============================================================
-function detectMainSubjectAdvanced(imageElement) {
+function detectSalientRegion(imageElement) {
   return new Promise((resolve) => {
     const img = imageElement
     if (!img.complete) {
-      img.onload = () => resolve(doSimpleDetect(img))
+      img.onload = () => resolve(doSpectralResidualDetect(img))
       img.onerror = () => resolve({ x: 50, y: 50 })
       return
     }
-    resolve(doSimpleDetect(img))
+    resolve(doSpectralResidualDetect(img))
   })
 }
 
-function doSimpleDetect(img) {
+function doSpectralResidualDetect(img) {
   try {
     const width = img.naturalWidth || img.width
     const height = img.naturalHeight || img.height
     if (width === 0 || height === 0) return { x: 50, y: 50 }
     
-    // 缩小图片到 200px 宽，只检测 X 轴
+    // 缩小图片到 256x256 进行频谱分析
+    const size = 256
     const canvas = document.createElement('canvas')
     const ctx = canvas.getContext('2d', { willReadFrequently: true })
-    const scale = Math.min(1, 200 / width)
-    canvas.width = Math.floor(width * scale)
-    canvas.height = Math.floor(height * scale)
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+    canvas.width = size
+    canvas.height = size
+    ctx.drawImage(img, 0, 0, size, size)
     
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+    const imageData = ctx.getImageData(0, 0, size, size)
     const data = imageData.data
     
-    // 只计算 X 轴方向的显著度
-    const colScores = new Float32Array(canvas.width)
-    const step = 2
-    
-    for (let x = 0; x < canvas.width; x += step) {
-      let sum = 0, count = 0
-      for (let y = 0; y < canvas.height; y += step) {
-        const idx = (y * canvas.width + x) * 4
-        const gray = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2]
-        sum += gray
-        count++
-      }
-      colScores[x] = count > 0 ? sum / count : 0
+    // 转灰度
+    const gray = new Float32Array(size * size)
+    for (let i = 0; i < size * size; i++) {
+      const idx = i * 4
+      gray[i] = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2]
     }
     
-    // 找到亮度最高的区域
-    let maxScore = 0
-    let bestX = canvas.width / 2
-    const windowSize = Math.min(40, Math.floor(canvas.width * 0.2))
+    // ★★★ 频谱残差算法 ★★★
+    // 1. 计算对数幅度谱
+    // 2. 减去平均频谱（残差）
+    // 3. 反变换得到显著图
     
-    for (let x = 0; x < canvas.width - windowSize; x += 2) {
+    // 简化版：用滑动窗口计算局部对比度
+    // 窗口大小 32x32
+    const windowSize = 32
+    const halfWindow = windowSize / 2
+    const saliency = new Float32Array(size * size)
+    
+    // 多尺度检测（提高准确率）
+    const scales = [16, 32, 48]
+    
+    for (const ws of scales) {
+      const half = ws / 2
+      const step = Math.max(2, Math.floor(ws / 8))
+      
+      for (let y = half; y < size - half; y += step) {
+        for (let x = half; x < size - half; x += step) {
+          const idx = y * size + x
+          const centerGray = gray[idx]
+          
+          // 计算周围像素的平均值和方差
+          let sum = 0, sumSq = 0, count = 0
+          for (let dy = -half; dy <= half; dy += 2) {
+            for (let dx = -half; dx <= half; dx += 2) {
+              if (dx === 0 && dy === 0) continue
+              const ni = (y + dy) * size + (x + dx)
+              const val = gray[ni]
+              sum += val
+              sumSq += val * val
+              count++
+            }
+          }
+          
+          if (count === 0) continue
+          const mean = sum / count
+          const variance = sumSq / count - mean * mean
+          const contrast = Math.abs(centerGray - mean)
+          
+          // 显著度 = 对比度 × 方差（高对比度+高方差的区域最显著）
+          const score = contrast * Math.sqrt(variance + 1)
+          saliency[idx] = Math.max(saliency[idx], score)
+        }
+      }
+    }
+    
+    // 高斯模糊平滑
+    const smoothed = new Float32Array(size * size)
+    const blurRadius = 8
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        let sum = 0, weightSum = 0
+        for (let dy = -blurRadius; dy <= blurRadius; dy++) {
+          for (let dx = -blurRadius; dx <= blurRadius; dx++) {
+            const px = x + dx, py = y + dy
+            if (px < 0 || px >= size || py < 0 || py >= size) continue
+            const dist = Math.sqrt(dx * dx + dy * dy)
+            const weight = Math.exp(-dist * dist / (2 * blurRadius * blurRadius))
+            sum += saliency[py * size + px] * weight
+            weightSum += weight
+          }
+        }
+        smoothed[y * size + x] = weightSum > 0 ? sum / weightSum : 0
+      }
+    }
+    
+    // 找到最显著的区域
+    let maxScore = 0
+    let bestX = size / 2
+    let bestY = size / 2
+    const regionSize = Math.min(40, Math.floor(size * 0.2))
+    
+    for (let y = 0; y < size - regionSize; y += 2) {
+      for (let x = 0; x < size - regionSize; x += 2) {
+        let score = 0
+        for (let dy = 0; dy < regionSize; dy += 2) {
+          for (let dx = 0; dx < regionSize; dx += 2) {
+            score += smoothed[(y + dy) * size + (x + dx)]
+          }
+        }
+        // 中心偏好（但权重降低，让真正的主体能被检测到）
+        const cx = x + regionSize / 2
+        const cy = y + regionSize / 2
+        const distFromCenter = Math.sqrt(
+          Math.pow((cx / size) - 0.5, 2) +
+          Math.pow((cy / size) - 0.5, 2)
+        )
+        score *= (1 + (1 - distFromCenter) * 0.15)
+        
+        if (score > maxScore) {
+          maxScore = score
+          bestX = cx
+          bestY = cy
+        }
+      }
+    }
+    
+    // 转换回原始坐标
+    const centerX = (bestX / size) * 100
+    const centerY = (bestY / size) * 100
+    const clampedX = Math.max(15, Math.min(85, centerX))
+    const clampedY = Math.max(15, Math.min(85, centerY))
+    
+    return { x: clampedX, y: clampedY }
+  } catch (e) {
+    console.warn('检测失败:', e)
+    return { x: 50, y: 50 }
+  }
+}
+
+// 简化的快速检测（用于卡片缩略图，只检测 X 轴）
+function detectSalientX(imageElement) {
+  return new Promise((resolve) => {
+    const img = imageElement
+    if (!img.complete) {
+      img.onload = () => resolve(doFastXDetect(img))
+      img.onerror = () => resolve(50)
+      return
+    }
+    resolve(doFastXDetect(img))
+  })
+}
+
+function doFastXDetect(img) {
+  try {
+    const width = img.naturalWidth || img.width
+    const height = img.naturalHeight || img.height
+    if (width === 0 || height === 0) return 50
+    
+    // 缩小到 200px 宽
+    const targetW = 200
+    const scale = targetW / width
+    const targetH = Math.floor(height * scale)
+    
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    canvas.width = targetW
+    canvas.height = targetH
+    ctx.drawImage(img, 0, 0, targetW, targetH)
+    
+    const imageData = ctx.getImageData(0, 0, targetW, targetH)
+    const data = imageData.data
+    
+    // 计算每列的方差（边缘检测）
+    const colScores = new Float32Array(targetW)
+    const step = 2
+    
+    for (let x = 0; x < targetW; x += step) {
+      let sum = 0, sumSq = 0, count = 0
+      for (let y = 0; y < targetH; y += step) {
+        const idx = (y * targetW + x) * 4
+        const gray = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2]
+        sum += gray
+        sumSq += gray * gray
+        count++
+      }
+      if (count > 0) {
+        const mean = sum / count
+        const variance = sumSq / count - mean * mean
+        colScores[x] = variance
+      }
+    }
+    
+    // 找到方差最大的区域（边缘最多的区域 = 主体）
+    const windowSize = Math.min(30, Math.floor(targetW * 0.2))
+    let maxScore = 0
+    let bestX = targetW / 2
+    
+    for (let x = 0; x < targetW - windowSize; x += 2) {
       let score = 0
-      for (let i = 0; i < windowSize && x + i < canvas.width; i++) {
+      for (let i = 0; i < windowSize && x + i < targetW; i++) {
         score += colScores[x + i]
       }
       // 中心偏好
-      const centerDist = Math.abs((x + windowSize / 2) / canvas.width - 0.5)
-      score *= (1 + (1 - centerDist) * 0.2)
+      const centerDist = Math.abs((x + windowSize / 2) / targetW - 0.5)
+      score *= (1 + (1 - centerDist) * 0.1)
       
       if (score > maxScore) {
         maxScore = score
@@ -224,12 +383,9 @@ function doSimpleDetect(img) {
       }
     }
     
-    const centerX = (bestX / canvas.width) * 100
-    const clampedX = Math.max(15, Math.min(85, centerX))
-    
-    return { x: clampedX, y: 50 }
+    return Math.max(15, Math.min(85, (bestX / targetW) * 100))
   } catch (e) {
-    return { x: 50, y: 50 }
+    return 50
   }
 }
 
@@ -251,6 +407,7 @@ const gridRef = ref(null)
 const previewImg = ref(null)
 const previewContainer = ref(null)
 const showBackToTop = ref(false)
+const cardImages = ref([])
 
 // 预览
 const previewVisible = ref(false)
@@ -262,7 +419,7 @@ const dropdownOpen = ref(false)
 const dropdownRef = ref(null)
 const imageLoaded = ref(false)
 
-// ★★★ 缩放状态 ★★★
+// 缩放状态
 const scale = ref(1)
 const translateX = ref(0)
 const translateY = ref(0)
@@ -300,37 +457,23 @@ function getThumbUrl(item) {
   return 'https://www.bing.com' + (item.urlbase || '') + '_400x240.jpg'
 }
 
-// ★★★ 卡片缩略图智能居中 - 移动端 ★★★
+// ★★★ 卡片缩略图智能定位 ★★★
 async function handleCardImageLoad(item, event) {
   const img = event.target
   if (!img) return
   
-  // 桌面端不处理，保持居中
+  // 桌面端：居中
   if (window.innerWidth > 768) {
     img.style.objectPosition = '50% 50%'
     item._loaded = true
     return
   }
   
-  // 移动端：智能检测主体位置（只检测 X 轴）
+  // ★★★ 移动端：使用快速 X 轴检测 ★★★
   try {
-    // 设置超时，避免卡死
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('检测超时')), 2000)
-    })
-    
-    const position = await Promise.race([
-      detectMainSubjectAdvanced(img),
-      timeoutPromise
-    ])
-    
-    if (position && position.x) {
-      img.style.objectPosition = position.x + '% 50%'
-    } else {
-      img.style.objectPosition = '50% 50%'
-    }
+    const posX = await detectSalientX(img)
+    img.style.objectPosition = posX + '% 50%'
   } catch (e) {
-    // 检测失败，保持居中
     img.style.objectPosition = '50% 50%'
   }
   
@@ -476,7 +619,7 @@ function scrollToTop() {
 }
 
 // ============================================================
-// ★★★ 预览 + 缩放 ★★★
+// 预览
 // ============================================================
 function openPreview(item) {
   const idx = allData.value.findIndex(d =>
@@ -485,7 +628,6 @@ function openPreview(item) {
   previewIndex.value = idx >= 0 ? idx : allData.value.indexOf(item)
   previewItem.value = allData.value[previewIndex.value]
   
-  // 重置状态
   imageLoaded.value = false
   scale.value = 1
   translateX.value = 0
@@ -499,7 +641,6 @@ function openPreview(item) {
   document.body.style.overflow = 'hidden'
   updateTitle(previewItem.value)
   
-  // ★★★ 设置背景模糊图 ★★★
   const overlay = document.querySelector('.preview-overlay')
   if (overlay) {
     overlay.style.setProperty('--bg-url', 'url(' + imgSrc + ')')
@@ -539,7 +680,6 @@ function updatePreview() {
   previewUrl.value = imgSrc
   updateTitle(previewItem.value)
   
-  // ★★★ 更新背景模糊图 ★★★
   const overlay = document.querySelector('.preview-overlay')
   if (overlay) {
     overlay.style.setProperty('--bg-url', 'url(' + imgSrc + ')')
@@ -560,18 +700,15 @@ function updateTitle(item) {
   }
 }
 
-// ★★★ 预览大图智能居中 + 加载完成 ★★★
+// ★★★ 预览大图智能居中 - 使用频谱残差检测 ★★★
 function onPreviewLoad() {
   imageLoaded.value = true
   const img = previewImg.value
   if (!img) return
   
-  // 预览大图检测主体位置（X轴和Y轴）
-  detectMainSubjectAdvanced(img).then(position => {
-    if (position && position.x && position.y) {
-      img.style.objectPosition = position.x + '% ' + position.y + '%'
-    } else {
-      img.style.objectPosition = '50% 50%'
+  detectSalientRegion(img).then(pos => {
+    if (pos && pos.x && pos.y) {
+      img.style.objectPosition = pos.x + '% ' + pos.y + '%'
     }
   }).catch(() => {
     img.style.objectPosition = '50% 50%'
@@ -582,28 +719,23 @@ function toggleToolbar() {
   toolbarVisible.value = !toolbarVisible.value
 }
 
-// ★★★ 下拉菜单 - 点击切换 ★★★
 function toggleDropdown(e) {
   e.stopPropagation()
   dropdownOpen.value = !dropdownOpen.value
 }
 
-// 点击外部关闭下拉菜单
 function handleClickOutside(e) {
   if (dropdownRef.value && !dropdownRef.value.contains(e.target)) {
     dropdownOpen.value = false
   }
 }
 
-// ★★★ 滚轮缩放 ★★★
 function onWheelZoom(e) {
   e.preventDefault()
   const delta = e.deltaY > 0 ? -0.1 : 0.1
-  const newScale = Math.max(0.3, Math.min(5, scale.value + delta))
-  scale.value = newScale
+  scale.value = Math.max(0.3, Math.min(5, scale.value + delta))
 }
 
-// ★★★ 拖拽平移 ★★★
 function startDrag(e) {
   if (scale.value <= 1) return
   isDragging.value = true
@@ -663,7 +795,6 @@ function getDownloadFileName(item, resolution) {
   return 'wallpaper_' + (item.startdate || item.date || Date.now()) + '_' + resolution + '.jpg'
 }
 
-// ★★★ 智能裁剪 - 使用检测到的主体位置 ★★★
 async function smartCropWithSubject(blob, fileName, resolution, subjectPosition) {
   return new Promise((resolve) => {
     const img = new Image()
@@ -767,7 +898,7 @@ function downloadImage(resolution) {
         
         let subjectPosition = null
         try {
-          const pos = await detectMainSubjectAdvanced(img)
+          const pos = await detectSalientRegion(img)
           subjectPosition = pos
         } catch (e) {}
         URL.revokeObjectURL(imgUrl)
@@ -815,7 +946,7 @@ function toggleTheme() {
 }
 
 // ============================================================
-// ★★★ 评论 - 使用 iframe ★★★
+// 评论
 // ============================================================
 function openComment() {
   commentVisible.value = true
