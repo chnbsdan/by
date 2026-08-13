@@ -17,20 +17,18 @@ export async function onRequest(context) {
       return new Response('No data found', { status: 404 });
     }
 
-    // ★★★ 随机选一张 ★★★
+    // 随机选一张
     const randomItem = data[Math.floor(Math.random() * data.length)];
     const isHistory = randomItem.isHistory === true;
 
-    // ★★★ 构造图片 URL ★★★
+    // 构造图片 URL
     let imageUrls = [];
     if (isHistory) {
-      // 历史数据：直接使用完整链接
       imageUrls = [
         randomItem.urlbase || '',
         randomItem.thumb || randomItem.urlbase || ''
       ];
     } else {
-      // 必应数据：拼接域名
       const baseUrl = 'https://www.bing.com';
       imageUrls = [
         `${baseUrl}${randomItem.urlbase}_UHD.jpg`,
@@ -39,7 +37,6 @@ export async function onRequest(context) {
       ];
     }
 
-    // ★★★ 降级加载函数 ★★★
     async function fetchImageWithFallback(urls, redirect) {
       for (const imageUrl of urls) {
         if (!imageUrl) continue;
@@ -65,7 +62,6 @@ export async function onRequest(context) {
           // 继续尝试下一个格式
         }
       }
-      // 所有格式都失败
       return new Response('Image not found', { status: 404 });
     }
 
