@@ -1,10 +1,8 @@
-// functions/api/index.js
 export async function onRequest(context) {
   const { request } = context;
   const url = new URL(request.url);
   const base = `${url.protocol}//${url.host}`;
 
-  // ★★★ 获取壁纸数据 - 从 /public/json/data.json 读取 ★★★
   let totalCount = '--';
   let todayDate = '--';
   try {
@@ -37,7 +35,6 @@ export async function onRequest(context) {
   <link rel="icon" href="/favicon.ico" type="image/x-icon" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
   <style>
-    /* ===== CSS Variables ===== */
     :root {
       --bg-primary: #08080f;
       --bg-secondary: #12121f;
@@ -58,8 +55,6 @@ export async function onRequest(context) {
       --radius-sm: 10px;
       --transition: 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
     }
-
-    /* ===== 亮色模式 - 淡橙色系 ===== */
     [data-theme="light"] {
       --bg-primary: #faf0e6;
       --bg-secondary: #ffffff;
@@ -74,10 +69,7 @@ export async function onRequest(context) {
       --shadow: 0 8px 32px rgba(45,31,20,0.08);
       --accent-glow: rgba(79,195,247,0.12);
     }
-
-    /* ===== Reset & Base ===== */
     * { margin: 0; padding: 0; box-sizing: border-box; }
-
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
       background: var(--bg-primary);
@@ -88,16 +80,9 @@ export async function onRequest(context) {
       line-height: 1.6;
       -webkit-font-smoothing: antialiased;
     }
-
     a { color: var(--accent); text-decoration: none; transition: var(--transition); }
     a:hover { opacity: 0.8; }
-
-    .container {
-      max-width: 1000px;
-      margin: 0 auto;
-    }
-
-    /* ===== Glow Orb ===== */
+    .container { max-width: 1000px; margin: 0 auto; }
     .glow-orb {
       position: fixed;
       top: -20%;
@@ -120,23 +105,18 @@ export async function onRequest(context) {
       background: radial-gradient(circle, rgba(0,229,255,0.04) 0%, transparent 70%);
       animation-delay: -10s;
     }
-
     [data-theme="light"] .glow-orb {
       background: radial-gradient(circle, rgba(255,180,120,0.08) 0%, transparent 70%);
     }
     [data-theme="light"] .glow-orb--bottom {
       background: radial-gradient(circle, rgba(255,200,150,0.06) 0%, transparent 70%);
     }
-
     @keyframes float {
       0%, 100% { transform: translate(0, 0) scale(1); }
       33% { transform: translate(30px, -20px) scale(1.05); }
       66% { transform: translate(-20px, 30px) scale(0.95); }
     }
-
     .container { position: relative; z-index: 1; }
-
-    /* ===== 主题切换按钮 - 右下角 ===== */
     .theme-toggle-wrap {
       position: fixed;
       bottom: 24px;
@@ -168,24 +148,11 @@ export async function onRequest(context) {
       border-color: var(--border-hover);
       transform: scale(1.05);
     }
-    .theme-toggle-btn .btn-label {
-      display: none;
-    }
-
+    .theme-toggle-btn .btn-label { display: none; }
     @media (max-width: 480px) {
-      .theme-toggle-wrap {
-        bottom: 16px;
-        right: 16px;
-      }
-      .theme-toggle-btn {
-        width: 42px;
-        height: 42px;
-        font-size: 16px;
-        padding: 10px 12px;
-      }
+      .theme-toggle-wrap { bottom: 16px; right: 16px; }
+      .theme-toggle-btn { width: 42px; height: 42px; font-size: 16px; padding: 10px 12px; }
     }
-
-    /* ===== Header ===== */
     .header {
       display: flex;
       justify-content: space-between;
@@ -271,8 +238,6 @@ export async function onRequest(context) {
       border-color: var(--border-hover);
       transform: translateY(-1px);
     }
-
-    /* ===== Stats ===== */
     .stats {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
@@ -323,8 +288,6 @@ export async function onRequest(context) {
       letter-spacing: 0.5px;
       text-transform: uppercase;
     }
-
-    /* ===== Section Titles ===== */
     .section-title {
       font-size: 18px;
       font-weight: 600;
@@ -343,8 +306,6 @@ export async function onRequest(context) {
       border-radius: 100px;
       border: 1px solid var(--accent-glow);
     }
-
-    /* ===== API Grid - 2列 ===== */
     .api-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -474,8 +435,6 @@ export async function onRequest(context) {
       color: var(--text-secondary);
       border: 1px solid var(--border-color);
     }
-
-    /* ===== Params Table ===== */
     .params-table-wrap {
       background: var(--bg-card);
       border: 1px solid var(--border-color);
@@ -516,8 +475,6 @@ export async function onRequest(context) {
       font-size: 12px;
     }
     .params-table tr:last-child td { border-bottom: none; }
-
-    /* ===== Example Box ===== */
     .example-box {
       background: var(--bg-code);
       border: 1px solid var(--border-color);
@@ -538,8 +495,6 @@ export async function onRequest(context) {
     .example-box .comment::before {
       content: '// ';
     }
-
-    /* ===== Donate Section ===== */
     .donate-section {
       margin-top: 44px;
       padding: 32px 28px;
@@ -605,8 +560,6 @@ export async function onRequest(context) {
     }
     .donate-section .qr-item .qr-label.wechat { color: #07c160; }
     .donate-section .qr-item .qr-label.alipay { color: #1677ff; }
-
-    /* ===== Footer ===== */
     footer {
       margin-top: 36px;
       padding-top: 20px;
@@ -638,8 +591,6 @@ export async function onRequest(context) {
       border-color: var(--border-hover);
       transform: translateY(-2px);
     }
-
-    /* ===== Toast ===== */
     .toast {
       position: fixed;
       bottom: 80px;
@@ -664,10 +615,6 @@ export async function onRequest(context) {
       opacity: 1;
       transform: translateX(-50%) translateY(0);
     }
-
-    /* ============================================================
-       ★★★ 响应式 ★★★
-    ============================================================ */
     @media (max-width: 768px) {
       body { padding: 16px 14px 40px; }
       .header-left h1 { font-size: 24px; }
@@ -695,21 +642,15 @@ export async function onRequest(context) {
   </style>
 </head>
 <body>
-
-  <!-- ===== Glow Orbs ===== -->
   <div class="glow-orb"></div>
   <div class="glow-orb glow-orb--bottom"></div>
-
-  <!-- ===== 主题切换按钮 - 右下角 ===== -->
   <div class="theme-toggle-wrap">
     <button class="theme-toggle-btn" id="themeToggle" title="切换主题">
       <i class="fas fa-moon" id="themeIcon"></i>
       <span class="btn-label" id="themeLabel">深色</span>
     </button>
   </div>
-
   <div class="container">
-
     <div class="header">
       <div class="header-left">
         <h1>
@@ -724,7 +665,6 @@ export async function onRequest(context) {
         <a href="/" class="btn-back"><i class="fas fa-arrow-left"></i> 返回首页</a>
       </div>
     </div>
-
     <div class="stats">
       <div class="stat-card">
         <div class="num"><i class="fas fa-image"></i> ${totalCount}</div>
@@ -739,73 +679,64 @@ export async function onRequest(context) {
         <div class="label">最后更新</div>
       </div>
     </div>
-
     <div class="section-title">
       <i class="fas fa-plug"></i> API 接口
       <span class="tag">全部免费</span>
     </div>
-
     <div class="api-grid">
-
       <div class="api-card">
         <div class="api-label"><i class="fas fa-sun"></i> 当天图像</div>
         <div class="api-path">/api/daily <span class="method">GET</span></div>
         <div class="api-desc">获取今日必应壁纸</div>
         <div class="api-code">
-          <span class="link-part"><a href="${base}/functions/api/daily" target="_blank">${base}/functions/api/daily</a></span>
-          <button class="copy-btn" onclick="copyText('${base}/functions/api/daily')"><i class="fas fa-copy"></i></button>
+          <span class="link-part"><a href="${base}/api/daily" target="_blank">${base}/api/daily</a></span>
+          <button class="copy-btn" onclick="copyText('${base}/api/daily')"><i class="fas fa-copy"></i></button>
         </div>
         <div class="api-tags">
           <code>?format=webp</code> <code>?format=jpeg</code> <code>?format=original</code>
         </div>
       </div>
-
       <div class="api-card">
         <div class="api-label"><i class="fas fa-random"></i> 随机图像</div>
         <div class="api-path">/api/random <span class="method">GET</span></div>
         <div class="api-desc">随机返回一张壁纸</div>
         <div class="api-code">
-          <span class="link-part"><a href="${base}/functions/api/random" target="_blank">${base}/functions/api/random</a></span>
-          <button class="copy-btn" onclick="copyText('${base}/functions/api/random')"><i class="fas fa-copy"></i></button>
+          <span class="link-part"><a href="${base}/api/random" target="_blank">${base}/api/random</a></span>
+          <button class="copy-btn" onclick="copyText('${base}/api/random')"><i class="fas fa-copy"></i></button>
         </div>
         <div class="api-tags">
           <code>?redirect=true</code> 重定向到图片
         </div>
       </div>
-
       <div class="api-card">
         <div class="api-label"><i class="fas fa-calendar-alt"></i> 指定日期</div>
         <div class="api-path">/api/image <span class="method">GET</span></div>
         <div class="api-desc">获取指定日期的壁纸</div>
         <div class="api-code">
-          <span class="link-part"><a href="${base}/functions/api/image?date=20210312" target="_blank">${base}/functions/api/image?date=20210312</a></span>
-          <button class="copy-btn" onclick="copyText('${base}/functions/api/image?date=20210312')"><i class="fas fa-copy"></i></button>
+          <span class="link-part"><a href="${base}/api/image?date=20210312" target="_blank">${base}/api/image?date=20210312</a></span>
+          <button class="copy-btn" onclick="copyText('${base}/api/image?date=20210312')"><i class="fas fa-copy"></i></button>
         </div>
         <div class="api-tags">
           <code>?date=20210312</code> 格式：YYYYMMDD
         </div>
       </div>
-
       <div class="api-card">
         <div class="api-label"><i class="fas fa-list"></i> 壁纸列表</div>
         <div class="api-path">/api/list <span class="method">GET</span></div>
         <div class="api-desc">获取所有壁纸列表（分页）</div>
         <div class="api-code">
-          <span class="link-part"><a href="${base}/functions/api/list" target="_blank">${base}/functions/api/list</a></span>
-          <button class="copy-btn" onclick="copyText('${base}/functions/api/list')"><i class="fas fa-copy"></i></button>
+          <span class="link-part"><a href="${base}/api/list" target="_blank">${base}/api/list</a></span>
+          <button class="copy-btn" onclick="copyText('${base}/api/list')"><i class="fas fa-copy"></i></button>
         </div>
         <div class="api-tags">
           <code>?page=1&size=30</code> 分页参数
         </div>
       </div>
-
     </div>
-
     <div class="section-title" style="margin-top:40px;">
       <i class="fas fa-cog"></i> 参数说明
       <span class="tag">可选</span>
     </div>
-
     <div class="params-table-wrap">
       <table class="params-table">
         <thead>
@@ -820,25 +751,22 @@ export async function onRequest(context) {
         </tbody>
       </table>
     </div>
-
     <div class="section-title" style="margin-top:40px;">
       <i class="fas fa-code"></i> 使用示例
       <span class="tag">HTML</span>
     </div>
-
     <div class="example-box">
       <div class="comment">嵌入当天壁纸</div>
-      &lt;img src="${base}/functions/api/daily" alt="今日壁纸" /&gt;
+      &lt;img src="${base}/api/daily" alt="今日壁纸" /&gt;
       <div class="comment" style="margin-top:8px;">嵌入随机壁纸</div>
-      &lt;img src="${base}/functions/api/random" alt="随机壁纸" /&gt;
+      &lt;img src="${base}/api/random" alt="随机壁纸" /&gt;
       <div class="comment" style="margin-top:8px;">嵌入指定日期壁纸</div>
-      &lt;img src="${base}/functions/api/image?date=20210312" alt="壁纸" /&gt;
+      &lt;img src="${base}/api/image?date=20210312" alt="壁纸" /&gt;
       <div class="comment" style="margin-top:8px;">JavaScript 调用</div>
-      fetch('${base}/functions/api/random')
+      fetch('${base}/api/random')
         .then(res => res.json())
         .then(data => console.log(data));
     </div>
-
     <div class="donate-section">
       <div class="donate-title"><i class="fas fa-heart"></i> 支持作者</div>
       <div class="donate-desc">如果这个 API 对你有帮助，请作者喝杯咖啡吧 ☕</div>
@@ -853,7 +781,6 @@ export async function onRequest(context) {
         </div>
       </div>
     </div>
-
     <footer>
       <span>© 2026 必应每日壁纸 · 图片来自 Bing</span>
       <div class="footer-links">
@@ -862,20 +789,13 @@ export async function onRequest(context) {
         <a href="/comment.html" title="反馈" target="_blank"><i class="fas fa-bug"></i></a>
       </div>
     </footer>
-
   </div>
-
   <div class="toast" id="toast">✅ 已复制</div>
-
   <script>
-    // ============================================================
-    // 1. 主题切换
-    // ============================================================
     var themeToggle = document.getElementById('themeToggle');
     var themeIcon = document.getElementById('themeIcon');
     var themeLabel = document.getElementById('themeLabel');
     var currentTheme = localStorage.getItem('apiTheme') || 'dark';
-
     function setTheme(theme) {
       currentTheme = theme;
       document.documentElement.setAttribute('data-theme', theme);
@@ -888,24 +808,15 @@ export async function onRequest(context) {
         themeLabel.textContent = '亮色';
       }
     }
-
     themeToggle.addEventListener('click', function() {
       setTheme(currentTheme === 'dark' ? 'light' : 'dark');
     });
     setTheme(currentTheme);
-
-    // ============================================================
-    // 2. 更新时间
-    // ============================================================
     var now = new Date();
     var h = String(now.getHours()).padStart(2, '0');
     var m = String(now.getMinutes()).padStart(2, '0');
     var updateEl = document.getElementById('updateTime');
     if (updateEl) updateEl.textContent = h + ':' + m;
-
-    // ============================================================
-    // 3. 复制功能
-    // ============================================================
     function copyText(text) {
       if (navigator.clipboard) {
         navigator.clipboard.writeText(text).then(function() {
@@ -917,7 +828,6 @@ export async function onRequest(context) {
         fallbackCopy(text);
       }
     }
-
     function fallbackCopy(text) {
       var input = document.createElement('input');
       input.value = text;
@@ -931,7 +841,6 @@ export async function onRequest(context) {
       }
       document.body.removeChild(input);
     }
-
     function showToast(msg) {
       var toast = document.getElementById('toast');
       toast.textContent = msg;
@@ -941,43 +850,7 @@ export async function onRequest(context) {
         toast.classList.remove('show');
       }, 2000);
     }
-
-    // ============================================================
-    // 4. 反馈按钮
-    // ============================================================
-    var feedbackLink = document.getElementById('feedbackLink');
-    if (feedbackLink) {
-      feedbackLink.addEventListener('click', function(e) {
-        e.preventDefault();
-        if (window.parent && typeof window.parent.openComment === 'function') {
-          window.parent.openComment();
-          return;
-        }
-        if (window.parent && window.parent !== window) {
-          window.parent.postMessage({ type: 'openComment' }, '*');
-          return;
-        }
-        window.location.href = '/?action=comment';
-      });
-    }
-
-    window.addEventListener('message', function(event) {
-      if (event.data && event.data.type === 'openComment') {
-        if (typeof window.parent.openComment === 'function') {
-          window.parent.openComment();
-        }
-      }
-    });
-
-    if (window.location.search.indexOf('action=comment') !== -1) {
-      if (window.parent && window.parent !== window) {
-        window.parent.postMessage({ type: 'openComment' }, '*');
-      } else {
-        window.location.href = '/';
-      }
-    }
   </script>
-
 </body>
 </html>
   `;
