@@ -529,16 +529,18 @@ function openPreview(item) {
   translateX.value = 0
   translateY.value = 0
   
-  previewUrl.value = getImageUrl(previewItem.value, 'fhd')
+  const imgSrc = getImageUrl(previewItem.value, 'fhd')
+  previewUrl.value = imgSrc
   previewVisible.value = true
   toolbarVisible.value = true
   dropdownOpen.value = false
   document.body.style.overflow = 'hidden'
   updateTitle(previewItem.value)
   
+  // ★★★ 设置背景模糊图（参考 Nuxt 版） ★★★
   const overlay = document.querySelector('.preview-overlay')
   if (overlay) {
-    overlay.style.setProperty('--bg-url', 'url(' + previewUrl.value + ')')
+    overlay.style.setProperty('--bg-url', 'url(' + imgSrc + ')')
   }
 }
 
@@ -571,12 +573,14 @@ function updatePreview() {
   translateY.value = 0
   
   previewItem.value = allData.value[previewIndex.value]
-  previewUrl.value = getImageUrl(previewItem.value, 'fhd')
+  const imgSrc = getImageUrl(previewItem.value, 'fhd')
+  previewUrl.value = imgSrc
   updateTitle(previewItem.value)
   
+  // ★★★ 更新背景模糊图 ★★★
   const overlay = document.querySelector('.preview-overlay')
   if (overlay) {
-    overlay.style.setProperty('--bg-url', 'url(' + previewUrl.value + ')')
+    overlay.style.setProperty('--bg-url', 'url(' + imgSrc + ')')
   }
 }
 
@@ -1136,45 +1140,56 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 }
 .back-to-top { display: flex; }
 
-/* ===== 预览 ===== */
+/* ===== ★★★ 预览 - 参考 Nuxt 版 ★★★ ===== */
 .preview-overlay { 
   display: none; 
   position: fixed; 
   top: 0; left: 0; right: 0; bottom: 0; 
   z-index: 2000; 
-  background: rgba(0,0,0,0.2);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  background: rgba(0,0,0,0.6);
   justify-content: center; 
   align-items: center; 
   cursor: default; 
   -webkit-tap-highlight-color: transparent; 
 }
 .preview-overlay.active { display: flex; }
+
+/* ★★★ 背景模糊图片（参考 Nuxt 版） ★★★ */
 .preview-overlay::before { 
-  display: none;
+  content: ''; 
+  position: fixed; 
+  top: -20px; 
+  left: -20px; 
+  right: -20px; 
+  bottom: -20px; 
+  background: center/cover no-repeat;
+  filter: blur(30px) brightness(0.5);
+  z-index: 0; 
+  transform: scale(1.05); 
+  transition: background-image 0.5s ease;
 }
 
 .preview-container {
   position: relative;
-  width: 92vw;
-  height: 85vh;
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0,0,0,0.25);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-radius: 20px;
-  overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  z-index: 1;
 }
 
 .preview-image {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  border-radius: 16px;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  pointer-events: auto;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
   opacity: 0;
   transition: opacity 0.5s ease;
 }
@@ -1189,7 +1204,7 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
   transform: translate(-50%, -50%);
   text-align: center;
   color: rgba(255,255,255,0.6);
-  z-index: 1;
+  z-index: 2;
   pointer-events: none;
 }
 .preview-loading .loading-spinner {
@@ -1199,14 +1214,6 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 }
 .preview-loading .loading-text {
   font-size: 14px;
-}
-
-@media (max-width: 768px) {
-  .preview-container {
-    width: 96vw;
-    height: 80vh;
-    border-radius: 12px;
-  }
 }
 
 /* ===== 箭头 ===== */
