@@ -15,88 +15,235 @@
     body {
       background: #ffffff;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      padding: 20px;
+      padding: 16px 20px 30px;
       min-height: 100vh;
     }
     #tcomment {
       max-width: 720px;
       margin: 0 auto;
     }
+
+    /* ★★★ 评论区滚动条 - 缩短 ★★★ */
+    .tk-comments-container {
+      max-height: 400px !important;
+      overflow-y: auto !important;
+    }
+    .tk-comments-container::-webkit-scrollbar {
+      width: 4px !important;
+    }
+    .tk-comments-container::-webkit-scrollbar-track {
+      background: #f0f0f0 !important;
+      border-radius: 2px !important;
+    }
+    .tk-comments-container::-webkit-scrollbar-thumb {
+      background: #ccc !important;
+      border-radius: 2px !important;
+    }
+    .tk-comments-container::-webkit-scrollbar-thumb:hover {
+      background: #aaa !important;
+    }
+
+    /* ★★★ 输入框 - 昵称/邮箱/网址 一排 ★★★ */
+    .tk-input .tk-row {
+      display: flex !important;
+      flex-wrap: wrap !important;
+      gap: 10px !important;
+    }
+    .tk-input .tk-row .tk-field {
+      flex: 1 !important;
+      min-width: 100px !important;
+    }
+    .tk-input .tk-row .tk-field label {
+      font-size: 12px !important;
+      color: #888 !important;
+      display: block !important;
+      margin-bottom: 2px !important;
+    }
+    .tk-input .tk-row .tk-field input {
+      width: 100% !important;
+      padding: 6px 10px !important;
+      border: 1px solid #ddd !important;
+      border-radius: 6px !important;
+      font-size: 13px !important;
+      background: #f8f8f8 !important;
+      transition: border 0.2s !important;
+    }
+    .tk-input .tk-row .tk-field input:focus {
+      border-color: #4fc3f7 !important;
+      outline: none !important;
+      background: #fff !important;
+    }
+
+    /* ★★★ 评论区整体样式 ★★★ */
+    .tk-comment {
+      padding: 12px 0 !important;
+      border-bottom: 1px solid #f0f0f0 !important;
+    }
+    .tk-comment:last-child {
+      border-bottom: none !important;
+    }
+    .tk-comment .tk-nick {
+      font-weight: 600 !important;
+      color: #1a1a2e !important;
+      font-size: 14px !important;
+    }
+    .tk-comment .tk-time {
+      color: #aaa !important;
+      font-size: 12px !important;
+      margin-left: 10px !important;
+    }
+    .tk-comment .tk-content {
+      font-size: 14px !important;
+      line-height: 1.7 !important;
+      color: #333 !important;
+      margin-top: 4px !important;
+    }
+    .tk-comment .tk-actions {
+      margin-top: 6px !important;
+    }
+    .tk-comment .tk-actions .tk-action {
+      font-size: 12px !important;
+      color: #999 !important;
+      margin-right: 12px !important;
+      cursor: pointer !important;
+      transition: color 0.2s !important;
+    }
+    .tk-comment .tk-actions .tk-action:hover {
+      color: #4fc3f7 !important;
+    }
+
+    /* ★★★ 提交按钮 ★★★ */
+    .tk-submit .tk-btn {
+      background: #4fc3f7 !important;
+      color: #fff !important;
+      border: none !important;
+      padding: 8px 24px !important;
+      border-radius: 6px !important;
+      font-size: 14px !important;
+      font-weight: 500 !important;
+      cursor: pointer !important;
+      transition: background 0.2s !important;
+    }
+    .tk-submit .tk-btn:hover {
+      background: #29b6f6 !important;
+    }
+
+    /* ★★★ 评论区标题 ★★★ */
+    .tk-meta {
+      display: flex !important;
+      justify-content: space-between !important;
+      align-items: center !important;
+      padding-bottom: 12px !important;
+      border-bottom: 2px solid #f0f0f0 !important;
+      margin-bottom: 12px !important;
+    }
+    .tk-meta .tk-count {
+      font-size: 16px !important;
+      font-weight: 600 !important;
+      color: #1a1a2e !important;
+    }
+    .tk-meta .tk-order {
+      font-size: 13px !important;
+      color: #888 !important;
+      cursor: pointer !important;
+    }
+    .tk-meta .tk-order.active {
+      color: #4fc3f7 !important;
+      font-weight: 500 !important;
+    }
+
+    /* ★★★ 空状态 ★★★ */
+    .tk-empty {
+      text-align: center !important;
+      color: #aaa !important;
+      padding: 30px 0 !important;
+      font-size: 14px !important;
+    }
+
+    /* ★★★ 加载更多 ★★★ */
+    .tk-loading .tk-load-more {
+      display: block !important;
+      text-align: center !important;
+      color: #aaa !important;
+      padding: 10px !important;
+      cursor: pointer !important;
+      font-size: 13px !important;
+    }
+    .tk-loading .tk-load-more:hover {
+      color: #4fc3f7 !important;
+    }
+
+    /* ★★★ 暗色模式 ★★★ */
     @media (prefers-color-scheme: dark) {
       body {
         background: #1a1a2e;
       }
-      .tk-comments,
-      .tk-comment,
-      .tk-input,
-      .tk-submit,
-      .tk-meta,
-      .tk-loading,
-      .tk-footer,
-      .tk-powered {
-        color: #e0e0e0 !important;
-      }
-      .tk-input {
+      .tk-comments-container::-webkit-scrollbar-track {
         background: #2a2a4e !important;
-        border: 1px solid #3a3a5e !important;
       }
-      .tk-input textarea,
-      .tk-input input {
+      .tk-comments-container::-webkit-scrollbar-thumb {
+        background: #555 !important;
+      }
+      .tk-comments-container::-webkit-scrollbar-thumb:hover {
+        background: #777 !important;
+      }
+      .tk-input .tk-row .tk-field input {
+        background: #2a2a4e !important;
+        border-color: #3a3a5e !important;
         color: #e0e0e0 !important;
-        background: transparent !important;
       }
-      .tk-input textarea::placeholder,
-      .tk-input input::placeholder {
-        color: #888 !important;
+      .tk-input .tk-row .tk-field input:focus {
+        border-color: #4fc3f7 !important;
+        background: #2a2a4e !important;
       }
-      .tk-comment .tk-nick,
-      .tk-comment .tk-nick a {
+      .tk-input .tk-row .tk-field label {
+        color: #aaa !important;
+      }
+      .tk-comment {
+        border-bottom-color: #2a2a4e !important;
+      }
+      .tk-comment .tk-nick {
         color: #4fc3f7 !important;
       }
-      .tk-comment .tk-content,
-      .tk-comment .tk-content p {
-        color: #e0e0e0 !important;
+      .tk-comment .tk-content {
+        color: #ddd !important;
       }
       .tk-comment .tk-time {
-        color: #888 !important;
+        color: #666 !important;
       }
       .tk-comment .tk-actions .tk-action {
-        color: #888 !important;
+        color: #666 !important;
       }
       .tk-comment .tk-actions .tk-action:hover {
+        color: #4fc3f7 !important;
+      }
+      .tk-meta {
+        border-bottom-color: #2a2a4e !important;
+      }
+      .tk-meta .tk-count {
+        color: #e0e0e0 !important;
+      }
+      .tk-meta .tk-order {
+        color: #666 !important;
+      }
+      .tk-meta .tk-order.active {
+        color: #4fc3f7 !important;
+      }
+      .tk-empty {
+        color: #666 !important;
+      }
+      .tk-loading .tk-load-more {
+        color: #666 !important;
+      }
+      .tk-loading .tk-load-more:hover {
         color: #4fc3f7 !important;
       }
       .tk-submit .tk-btn {
         background: #4fc3f7 !important;
         color: #1a1a2e !important;
       }
-      .tk-meta .tk-count {
-        color: #888 !important;
-      }
-      .tk-meta .tk-order {
-        color: #888 !important;
-      }
-      .tk-meta .tk-order.active {
-        color: #4fc3f7 !important;
-      }
-      .tk-loading .tk-load-more {
-        color: #888 !important;
-      }
-      .tk-loading .tk-load-more:hover {
-        color: #4fc3f7 !important;
-      }
-      .tk-empty {
-        color: #888 !important;
-      }
-      .tk-footer,
-      .tk-powered,
-      .tk-footer a,
-      .tk-powered a {
-        color: #888 !important;
-      }
-      .tk-footer a:hover,
-      .tk-powered a:hover {
-        color: #aaa !important;
+      .tk-submit .tk-btn:hover {
+        background: #29b6f6 !important;
       }
     }
   </style>
