@@ -8,7 +8,6 @@ export async function onRequest(context) {
   let totalCount = '--';
   let todayDate = '--';
   try {
-    // ★★★ 修改：数据源改为 /public/json/data.json ★★★
     const dataUrl = `${base}/public/json/data.json`;
     const res = await fetch(dataUrl, {
       headers: {
@@ -20,9 +19,7 @@ export async function onRequest(context) {
       const data = await res.json();
       totalCount = data.length || 0;
       if (data.length > 0) {
-        // ★★★ data.json 使用 startdate 字段，按日期排序 ★★★
         data.sort((a, b) => b.startdate.localeCompare(a.startdate));
-        // ★★★ 取最新日期的 startdate ★★★
         todayDate = data[0].startdate || '--';
       }
     }
@@ -755,8 +752,8 @@ export async function onRequest(context) {
         <div class="api-path">/api/daily <span class="method">GET</span></div>
         <div class="api-desc">获取今日必应壁纸</div>
         <div class="api-code">
-          <span class="link-part"><a href="${base}/api/daily" target="_blank">${base}/api/daily</a></span>
-          <button class="copy-btn" onclick="copyText('${base}/api/daily')"><i class="fas fa-copy"></i></button>
+          <span class="link-part"><a href="${base}/functions/api/daily" target="_blank">${base}/functions/api/daily</a></span>
+          <button class="copy-btn" onclick="copyText('${base}/functions/api/daily')"><i class="fas fa-copy"></i></button>
         </div>
         <div class="api-tags">
           <code>?format=webp</code> <code>?format=jpeg</code> <code>?format=original</code>
@@ -768,8 +765,8 @@ export async function onRequest(context) {
         <div class="api-path">/api/random <span class="method">GET</span></div>
         <div class="api-desc">随机返回一张壁纸</div>
         <div class="api-code">
-          <span class="link-part"><a href="${base}/api/random" target="_blank">${base}/api/random</a></span>
-          <button class="copy-btn" onclick="copyText('${base}/api/random')"><i class="fas fa-copy"></i></button>
+          <span class="link-part"><a href="${base}/functions/api/random" target="_blank">${base}/functions/api/random</a></span>
+          <button class="copy-btn" onclick="copyText('${base}/functions/api/random')"><i class="fas fa-copy"></i></button>
         </div>
         <div class="api-tags">
           <code>?redirect=true</code> 重定向到图片
@@ -781,8 +778,8 @@ export async function onRequest(context) {
         <div class="api-path">/api/image <span class="method">GET</span></div>
         <div class="api-desc">获取指定日期的壁纸</div>
         <div class="api-code">
-          <span class="link-part"><a href="${base}/api/image?date=20210312" target="_blank">${base}/api/image?date=20210312</a></span>
-          <button class="copy-btn" onclick="copyText('${base}/api/image?date=20210312')"><i class="fas fa-copy"></i></button>
+          <span class="link-part"><a href="${base}/functions/api/image?date=20210312" target="_blank">${base}/functions/api/image?date=20210312</a></span>
+          <button class="copy-btn" onclick="copyText('${base}/functions/api/image?date=20210312')"><i class="fas fa-copy"></i></button>
         </div>
         <div class="api-tags">
           <code>?date=20210312</code> 格式：YYYYMMDD
@@ -794,8 +791,8 @@ export async function onRequest(context) {
         <div class="api-path">/api/list <span class="method">GET</span></div>
         <div class="api-desc">获取所有壁纸列表（分页）</div>
         <div class="api-code">
-          <span class="link-part"><a href="${base}/api/list" target="_blank">${base}/api/list</a></span>
-          <button class="copy-btn" onclick="copyText('${base}/api/list')"><i class="fas fa-copy"></i></button>
+          <span class="link-part"><a href="${base}/functions/api/list" target="_blank">${base}/functions/api/list</a></span>
+          <button class="copy-btn" onclick="copyText('${base}/functions/api/list')"><i class="fas fa-copy"></i></button>
         </div>
         <div class="api-tags">
           <code>?page=1&size=30</code> 分页参数
@@ -831,13 +828,13 @@ export async function onRequest(context) {
 
     <div class="example-box">
       <div class="comment">嵌入当天壁纸</div>
-      &lt;img src="${base}/api/daily" alt="今日壁纸" /&gt;
+      &lt;img src="${base}/functions/api/daily" alt="今日壁纸" /&gt;
       <div class="comment" style="margin-top:8px;">嵌入随机壁纸</div>
-      &lt;img src="${base}/api/random" alt="随机壁纸" /&gt;
+      &lt;img src="${base}/functions/api/random" alt="随机壁纸" /&gt;
       <div class="comment" style="margin-top:8px;">嵌入指定日期壁纸</div>
-      &lt;img src="${base}/api/image?date=20210312" alt="壁纸" /&gt;
+      &lt;img src="${base}/functions/api/image?date=20210312" alt="壁纸" /&gt;
       <div class="comment" style="margin-top:8px;">JavaScript 调用</div>
-      fetch('${base}/api/random')
+      fetch('${base}/functions/api/random')
         .then(res => res.json())
         .then(data => console.log(data));
     </div>
@@ -862,7 +859,7 @@ export async function onRequest(context) {
       <div class="footer-links">
         <a href="/" title="首页"><i class="fas fa-home"></i></a>
         <a href="https://github.com/chnbsdan/Bing-Wallpaper-Archive" target="_blank" title="GitHub"><i class="fab fa-github"></i></a>
-        <a href="#" title="反馈" id="feedbackLink"><i class="fas fa-bug"></i></a>
+        <a href="/comment.html" title="反馈" target="_blank"><i class="fas fa-bug"></i></a>
       </div>
     </footer>
 
