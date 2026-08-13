@@ -130,14 +130,20 @@
       </div>
     </div>
 
-    <!-- 评论弹窗 -->
+    <!-- ★★★ 评论弹窗 - 使用 iframe ★★★ -->
     <div v-if="commentVisible" class="comment-overlay active" @click.self="closeComment">
       <div class="comment-modal">
         <div class="comment-header">
           <h2><i class="fas fa-comment-dots"></i> 留言反馈</h2>
           <button class="close-btn" @click="closeComment"><i class="fas fa-times"></i></button>
         </div>
-        <div class="comment-body" id="commentBody"><div id="tcomment"></div></div>
+        <div class="comment-body">
+          <iframe 
+            src="/comment.html" 
+            frameborder="0" 
+            style="width:100%;min-height:500px;border:none;background:transparent;"
+          ></iframe>
+        </div>
       </div>
     </div>
   </div>
@@ -167,7 +173,6 @@ function doAdvancedDetect(img) {
     const height = img.naturalHeight || img.height
     if (width === 0 || height === 0) return { x: 50, y: 50 }
     
-    // 使用两个尺度检测
     const scales = [
       { w: Math.min(400, width * 0.5), h: Math.min(400, height * 0.5) },
       { w: Math.min(200, width * 0.25), h: Math.min(200, height * 0.25) }
@@ -187,7 +192,6 @@ function doAdvancedDetect(img) {
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
       const data = imageData.data
       
-      // 计算显著度图（多特征融合）
       const saliency = new Float32Array(canvas.width * canvas.height)
       const step = 3
       
@@ -199,7 +203,6 @@ function doAdvancedDetect(img) {
           const b = data[idx + 2]
           const gray = 0.299 * r + 0.587 * g + 0.114 * b
           
-          // 1. 亮度对比度
           let contrast = 0
           let count = 0
           for (let dy = -step; dy <= step; dy += step) {
@@ -213,7 +216,6 @@ function doAdvancedDetect(img) {
           }
           contrast = count > 0 ? contrast / count / 255 : 0
           
-          // 2. 颜色方差
           let colorVar = 0
           let cCount = 0
           for (let dy = -step; dy <= step; dy += step) {
@@ -229,21 +231,16 @@ function doAdvancedDetect(img) {
           }
           colorVar = cCount > 0 ? Math.sqrt(colorVar / cCount) / 255 : 0
           
-          // 3. 中心偏好（黄金分割点）
           const cx = x / canvas.width
           const cy = y / canvas.height
           const centerDist = Math.sqrt(Math.pow(cx - 0.5, 2) + Math.pow(cy - 0.5, 2))
           const centerBias = 1 - centerDist * 0.6
-          
-          // 4. 亮度增强（暗部抑制）
           const brightnessBias = 0.3 + gray / 255 * 0.7
           
-          // 综合得分
           saliency[y * canvas.width + x] = (contrast * 0.5 + colorVar * 0.3 + centerBias * 0.2) * brightnessBias
         }
       }
       
-      // 找到最显著的区域（使用滑动窗口）
       const windowSize = Math.min(40, Math.floor(Math.min(canvas.width, canvas.height) * 0.2))
       const windowStep = Math.max(2, Math.floor(windowSize / 4))
       
@@ -259,11 +256,8 @@ function doAdvancedDetect(img) {
           }
           score = count > 0 ? score / count : 0
           
-          // 转换为原始坐标
           const px = (x + windowSize / 2) / canvas.width * width
           const py = (y + windowSize / 2) / canvas.height * height
-          
-          // 多尺度加权
           const scaleWeight = scale.w / 400
           const weightedScore = score * scaleWeight
           
@@ -276,7 +270,6 @@ function doAdvancedDetect(img) {
       }
     }
     
-    // 如果检测失败，返回居中
     if (maxScore < 0.01) return { x: 50, y: 50 }
     
     return {
@@ -360,7 +353,6 @@ async function handleCardImageLoad(item, event) {
   const img = event.target
   if (!img) return
   
-  // 桌面端不处理
   if (window.innerWidth > 768) {
     img.style.objectPosition = '50% 50%'
     item._loaded = true
@@ -528,7 +520,6 @@ function openPreview(item) {
   previewVisible.value = true
   toolbarVisible.value = true
   dropdownOpen.value = false
-  // ★★★ 重置缩放 ★★★
   scale.value = 1
   translateX.value = 0
   translateY.value = 0
@@ -564,7 +555,6 @@ function nextPreview() {
 function updatePreview() {
   previewItem.value = allData.value[previewIndex.value]
   previewUrl.value = getImageUrl(previewItem.value, 'fhd')
-  // ★★★ 切换时重置缩放 ★★★
   scale.value = 1
   translateX.value = 0
   translateY.value = 0
@@ -704,7 +694,6 @@ async function smartCropWithSubject(blob, fileName, resolution, subjectPosition)
 
         let cropX, cropY, cropWidth, cropHeight
         
-        // 如果有主体位置，以主体为中心裁剪
         if (subjectPosition) {
           const centerX = (subjectPosition.x / 100) * imgW
           const centerY = (subjectPosition.y / 100) * imgH
@@ -721,7 +710,6 @@ async function smartCropWithSubject(blob, fileName, resolution, subjectPosition)
             cropY = Math.max(0, Math.min(imgH - cropHeight, centerY - cropHeight / 2))
           }
         } else {
-          // 中心裁剪
           if (imgW / imgH > targetRatio) {
             cropHeight = imgH
             cropWidth = imgH * targetRatio
@@ -779,7 +767,6 @@ function downloadImage(resolution) {
 
   dropdownOpen.value = false
 
-  // ★★★ 获取主体位置用于智能裁剪 ★★★
   fetch(url, { mode: 'cors' })
     .then(res => {
       if (!res.ok) throw new Error('网络请求失败')
@@ -787,7 +774,6 @@ function downloadImage(resolution) {
     })
     .then(async (blob) => {
       if (isMobile) {
-        // 先检测主体位置
         const img = new Image()
         const imgUrl = URL.createObjectURL(blob)
         img.src = imgUrl
@@ -797,7 +783,6 @@ function downloadImage(resolution) {
         try {
           const pos = await detectMainSubjectAdvanced(img)
           subjectPosition = pos
-          console.log('🎯 下载智能裁剪位置:', pos.x + '%', pos.y + '%')
         } catch (e) {}
         URL.revokeObjectURL(imgUrl)
         
@@ -844,45 +829,12 @@ function toggleTheme() {
 }
 
 // ============================================================
-// 评论
+// ★★★ 评论 - 使用 iframe ★★★
 // ============================================================
 function openComment() {
   commentVisible.value = true
   document.body.style.overflow = 'hidden'
   if (navOpen.value) navOpen.value = false
-  
-  nextTick(() => {
-    let retries = 0
-    const maxRetries = 10
-    
-    const initTwikoo = () => {
-      if (typeof twikoo !== 'undefined') {
-        try {
-          const container = document.querySelector('#tcomment')
-          if (!container) return
-          if (container.querySelector('.tk-comment')) return
-          
-          twikoo.init({
-            envId: 'https://twikoo.hangdn.net',
-            el: '#tcomment',
-            lang: 'zh-CN',
-          })
-          console.log('✅ Twikoo 评论加载成功')
-        } catch (e) {
-          console.warn('Twikoo 初始化失败:', e)
-        }
-      } else if (retries < maxRetries) {
-        retries++
-        setTimeout(initTwikoo, 500)
-      } else {
-        const container = document.querySelector('#tcomment')
-        if (container) {
-          container.innerHTML = '<p style="color:#999;text-align:center;padding:20px;">评论加载失败，请刷新后重试</p>'
-        }
-      }
-    }
-    initTwikoo()
-  })
 }
 
 function closeComment() {
@@ -1418,7 +1370,18 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 .comment-header h2 i { color: #4fc3f7; }
 .comment-header .close-btn { background: none; border: none; color: #999; font-size: 20px; cursor: pointer; padding: 4px 8px; border-radius: 6px; transition: 0.2s; }
 .comment-header .close-btn:hover { background: #f0f0f0; color: #333; }
-.comment-body { flex: 1; overflow-y: auto; padding: 20px 24px 16px; background: #ffffff !important; }
+.comment-body { 
+  flex: 1; 
+  overflow-y: auto; 
+  padding: 0; 
+  background: #ffffff !important; 
+}
+.comment-body iframe {
+  width: 100%;
+  min-height: 500px;
+  border: none;
+  background: transparent;
+}
 .comment-body::-webkit-scrollbar { width: 4px; }
 .comment-body::-webkit-scrollbar-thumb { background: #ccc; border-radius: 2px; }
 
