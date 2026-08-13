@@ -7,7 +7,7 @@ export async function onRequest(context) {
   const redirect = url.searchParams.get("redirect") === "true";
   const size = parseInt(url.searchParams.get("size")) || 0;
 
-  // ★★★ Bing 官方支持的尺寸列表 ★★★
+  // Bing 官方支持的尺寸列表
   const SUPPORTED_SIZES = [400, 640, 768, 1024, 1366, 1920, 2560];
   const SIZE_MAP = {
     400: '400x240',
@@ -51,19 +51,18 @@ export async function onRequest(context) {
       return new Response("No data found", { status: 404 });
     }
 
-    // ★★★ 按 startdate 排序，取最新的 ★★★
+    // 按 startdate 排序，取最新的
     data.sort((a, b) => b.startdate.localeCompare(a.startdate));
     const latest = data[0];
 
-    // ★★★ 判断是历史数据还是必应数据 ★★★
+    // 判断是历史数据还是必应数据
     const isHistory = latest.isHistory === true;
 
-    // ★★★ 构造图片 URL ★★★
+    // 构造图片 URL
     let imageUrl;
     let imageUrls = [];
 
     if (isHistory) {
-      // ★★★ 历史数据：urlbase 已经是完整链接 ★★★
       imageUrl = latest.urlbase || '';
       imageUrls = [
         imageUrl,
@@ -71,7 +70,6 @@ export async function onRequest(context) {
       ];
       console.log(`📸 daily (历史): ${latest.startdate}, url: ${imageUrl}`);
     } else {
-      // ★★★ 必应数据：拼接域名 ★★★
       const baseUrl = 'https://www.bing.com';
       if (actualSize > 0 && SIZE_MAP[actualSize]) {
         imageUrl = `${baseUrl}${latest.urlbase}_${SIZE_MAP[actualSize]}.jpg`;
@@ -90,7 +88,6 @@ export async function onRequest(context) {
       return Response.redirect(imageUrl, 302);
     }
 
-    // ★★★ 降级加载函数 ★★★
     async function fetchImageWithFallback(urls) {
       for (const url of urls) {
         if (!url) continue;
