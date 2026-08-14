@@ -200,7 +200,7 @@ const lastTranslateY = ref(0)
 const commentVisible = ref(false)
 
 // ============================================================
-// 工具函数 - ★★★ 核心修改：直接使用必应接口 ★★★
+// 工具函数 - ★★★ 直接使用必应接口 ★★★
 // ============================================================
 function getImageUrl(item, resolution) {
   if (!item) return ''
@@ -360,7 +360,7 @@ function scrollToTop() {
 }
 
 // ============================================================
-// 预览
+// 预览 - ★★★ 移动端自动使用竖屏 ★★★
 // ============================================================
 function openPreview(item) {
   const idx = allData.value.findIndex(d =>
@@ -374,7 +374,10 @@ function openPreview(item) {
   translateX.value = 0
   translateY.value = 0
   
-  const imgSrc = getImageUrl(previewItem.value, 'fhd')
+  // ★★★ 移动端使用竖屏，桌面端使用横屏 ★★★
+  const isMobile = window.innerWidth < 768
+  const resolution = isMobile ? 'mobile_s' : 'fhd'
+  const imgSrc = getImageUrl(previewItem.value, resolution)
   previewUrl.value = imgSrc
   previewVisible.value = true
   toolbarVisible.value = true
@@ -412,7 +415,10 @@ function updatePreview() {
   translateY.value = 0
   
   previewItem.value = allData.value[previewIndex.value]
-  const imgSrc = getImageUrl(previewItem.value, 'fhd')
+  // ★★★ 移动端使用竖屏，桌面端使用横屏 ★★★
+  const isMobile = window.innerWidth < 768
+  const resolution = isMobile ? 'mobile_s' : 'fhd'
+  const imgSrc = getImageUrl(previewItem.value, resolution)
   previewUrl.value = imgSrc
   updateTitle(previewItem.value)
 }
@@ -476,7 +482,7 @@ function endDrag() {
 }
 
 // ============================================================
-// 下载 - ★★★ 简化：直接用必应接口下载 ★★★
+// 下载 - ★★★ 直接下载到本地 ★★★
 // ============================================================
 function getDownloadFileName(item, resolution) {
   const urlbase = item.urlbase || ''
@@ -511,7 +517,7 @@ function getDownloadFileName(item, resolution) {
   return 'wallpaper_' + (item.startdate || item.date || Date.now()) + '_' + resolution + '.jpg'
 }
 
-// ★★★ 核心修改：直接使用必应接口下载，不再前端裁剪 ★★★
+// ★★★ 下载：用 fetch 下载后保存，不打开新窗口 ★★★
 function downloadImage(resolution) {
   if (!previewItem.value) return
   const item = previewItem.value
@@ -520,31 +526,24 @@ function downloadImage(resolution) {
 
   dropdownOpen.value = false
 
-  // 直接使用必应接口的图片URL下载
-  const link = document.createElement('a')
-  link.href = url
-  link.download = fileName
-  link.target = '_blank'
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-}
-
-function downloadBlob(blob, fileName) {
-  try {
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = fileName
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    setTimeout(() => URL.revokeObjectURL(url), 3000)
-  } catch (e) {
-    const url = URL.createObjectURL(blob)
-    window.open(url, '_blank')
-    setTimeout(() => URL.revokeObjectURL(url), 10000)
-  }
+  fetch(url)
+    .then(res => {
+      if (!res.ok) throw new Error('下载失败')
+      return res.blob()
+    })
+    .then(blob => {
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(blob)
+      link.download = fileName
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      setTimeout(() => URL.revokeObjectURL(link.href), 3000)
+    })
+    .catch(() => {
+      // 降级方案：直接打开
+      window.open(url, '_blank')
+    })
 }
 
 // ============================================================
