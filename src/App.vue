@@ -86,7 +86,7 @@
           :src="previewUrl" 
           alt="预览" 
           crossorigin="anonymous" 
-          @load="imageLoaded = true" 
+          @load="onPreviewLoad" 
           @click="toggleToolbar"
           @wheel="onWheelZoom"
           @mousedown="startDrag"
@@ -200,30 +200,312 @@ const lastTranslateY = ref(0)
 const commentVisible = ref(false)
 
 // ============================================================
-// 工具函数 - ★★★ 直接使用必应接口 ★★★
+// ★★★ 显著性检测（历史数据用） ★★★
 // ============================================================
-function getImageUrl(item, resolution) {
-  if (!item) return ''
-  if (item.isHistory) return item.urlbase || ''
-  if (item.urlbase && item.urlbase.startsWith('http')) return item.urlbase
+
+function detectSalientRegion(imageElement) {
+  return new Promise((resolve) => {
+    const img = imageElement
+    if (!img.complete) {
+      img.onload = () => resolve(doEnhancedDetect(img))
+      img.onerror = () => resolve({ x: 50, y: 50 })
+      return
+    }
+    resolve(doEnhancedDetect(img))
+  })
+}
+
+function doEnhancedDetect(img) {
+  try {
+    const width = img.naturalWidth || img.width
+    const height = img.naturalHeight || img.height
+    if (width === 0 || height === 0) return { x: 50, y: 50 }
+    
+    const size = 256
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    canvas.width = size
+    canvas.height = size
+    ctx.drawImage(img, 0, 0, size, size)
+    
+    const imageData = ctx.getImageData(0, 0, size, size)
+    const data = imageData.data
+    
+    const gray = new Float32Array(size * size)
+    const r = new Float32Array(size * size)
+    const g = new Float32Array(size * size)
+    const b = new Float32Array(size * size)
+    
+    for (let i = 0; i < size * size; i++) {
+      const idx = i * 4
+      r[i] = data[idx]
+      g[i] = data[idx + 1]
+      b[i] = data[idx + 2]
+      gray[i] = 0.299 * r[i] + 0.587 * g[i] + 0.114 * b[i]
+    }
+    
+    const graySaliency = computeGraySaliency(gray, size)
+    const colorSaliency = computeColorSaliency(r, g, b, size)
+    const edgeSaliency = computeEdgeSaliency(gray, size)
+    
+    const combined = new Float32Array(size * size)
+    for (let i = 0; i < size * size; i++) {
+      combined[i] = graySaliency[i] * 0.4 + colorSaliency[i] * 0.3 + edgeSaliency[i] * 0.3
+    }
+    
+    return findBestRegion(combined, size, width, height)
+    
+  } catch (e) {
+    console.warn('检测失败:', e)
+    return { x: 50, y: 50 }
+  }
+}
+
+function computeGraySaliency(gray, size) {
+  const result = new Float32Array(size * size)
+  const half = 16
+  const step = 2
   
-  const resMap = {
-    'thumb': '_400x240.jpg',
-    'hd': '_1920x1200.jpg',
-    'fhd': '_1920x1080.jpg',
-    'uhd': '_UHD.jpg',
-    '4k': '_UHD.jpg',
-    'mobile': '_1080x1920.jpg',
-    'mobile_s': '_768x1280.jpg'
+  for (let y = half; y < size - half; y += step) {
+    for (let x = half; x < size - half; x += step) {
+      const idx = y * size + x
+      const center = gray[idx]
+      
+      let sum = 0, sumSq = 0, count = 0
+      for (let dy = -half; dy <= half; dy += 2) {
+        for (let dx = -half; dx <= half; dx += 2) {
+          if (dx === 0 && dy === 0) continue
+          const ni = (y + dy) * size + (x + dx)
+          const val = gray[ni]
+          sum += val
+          sumSq += val * val
+          count++
+        }
+      }
+      
+      if (count === 0) continue
+      const mean = sum / count
+      const variance = sumSq / count - mean * mean
+      const contrast = Math.abs(center - mean)
+      const brightnessNorm = 1 + (center / 255) * 0.2
+      result[idx] = contrast * Math.sqrt(variance + 1) * brightnessNorm
+    }
+  }
+  return gaussianBlur(result, size, 6)
+}
+
+function computeColorSaliency(r, g, b, size) {
+  const result = new Float32Array(size * size)
+  const half = 14
+  const step = 2
+  
+  for (let y = half; y < size - half; y += step) {
+    for (let x = half; x < size - half; x += step) {
+      const idx = y * size + x
+      
+      let sumR = 0, sumG = 0, sumB = 0, count = 0
+      for (let dy = -half; dy <= half; dy += 2) {
+        for (let dx = -half; dx <= half; dx += 2) {
+          if (dx === 0 && dy === 0) continue
+          const ni = (y + dy) * size + (x + dx)
+          sumR += r[ni]
+          sumG += g[ni]
+          sumB += b[ni]
+          count++
+        }
+      }
+      
+      if (count === 0) continue
+      const meanR = sumR / count
+      const meanG = sumG / count
+      const meanB = sumB / count
+      
+      const colorDist = Math.sqrt(
+        Math.pow(r[idx] - meanR, 2) +
+        Math.pow(g[idx] - meanG, 2) +
+        Math.pow(b[idx] - meanB, 2)
+      )
+      
+      const sat = Math.max(r[idx], g[idx], b[idx]) - Math.min(r[idx], g[idx], b[idx])
+      const satWeight = 1 - (sat / 255) * 0.15
+      
+      result[idx] = colorDist * satWeight
+    }
+  }
+  return gaussianBlur(result, size, 6)
+}
+
+function computeEdgeSaliency(gray, size) {
+  const edges = new Float32Array(size * size)
+  
+  for (let y = 1; y < size - 1; y++) {
+    for (let x = 1; x < size - 1; x++) {
+      const idx = y * size + x
+      const gx = 
+        -gray[(y-1) * size + (x-1)] + gray[(y-1) * size + (x+1)]
+        -2 * gray[y * size + (x-1)] + 2 * gray[y * size + (x+1)]
+        -gray[(y+1) * size + (x-1)] + gray[(y+1) * size + (x+1)]
+      
+      const gy = 
+        -gray[(y-1) * size + (x-1)] - 2 * gray[(y-1) * size + x] - gray[(y-1) * size + (x+1)]
+        +gray[(y+1) * size + (x-1)] + 2 * gray[(y+1) * size + x] + gray[(y+1) * size + (x+1)]
+      
+      edges[idx] = Math.min(1, Math.sqrt(gx * gx + gy * gy) / 255)
+    }
   }
   
-  const suffix = resMap[resolution] || '_1920x1080.jpg'
-  return 'https://www.bing.com' + (item.urlbase || '') + suffix
+  const dilated = new Float32Array(size * size)
+  const radius = 3
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      let maxVal = 0
+      for (let dy = -radius; dy <= radius; dy++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+          const px = x + dx, py = y + dy
+          if (px < 0 || px >= size || py < 0 || py >= size) continue
+          const val = edges[py * size + px]
+          if (val > maxVal) maxVal = val
+        }
+      }
+      dilated[y * size + x] = maxVal
+    }
+  }
+  return dilated
+}
+
+function gaussianBlur(data, size, radius) {
+  const result = new Float32Array(data.length)
+  const sigma = radius / 2
+  const half = Math.floor(radius / 2)
+  
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      let sum = 0, weightSum = 0
+      for (let dy = -half; dy <= half; dy++) {
+        for (let dx = -half; dx <= half; dx++) {
+          const px = x + dx, py = y + dy
+          if (px < 0 || px >= size || py < 0 || py >= size) continue
+          const dist = dx * dx + dy * dy
+          const weight = Math.exp(-dist / (2 * sigma * sigma))
+          sum += data[py * size + px] * weight
+          weightSum += weight
+        }
+      }
+      result[y * size + x] = weightSum > 0 ? sum / weightSum : 0
+    }
+  }
+  return result
+}
+
+function findBestRegion(saliency, size, origWidth, origHeight) {
+  let maxScore = 0
+  let bestX = size / 2
+  let bestY = size / 2
+  const regionSize = Math.min(40, Math.floor(size * 0.2))
+  
+  for (let y = 0; y < size - regionSize; y += 2) {
+    for (let x = 0; x < size - regionSize; x += 2) {
+      let score = 0
+      let count = 0
+      for (let dy = 0; dy < regionSize; dy += 2) {
+        for (let dx = 0; dx < regionSize; dx += 2) {
+          score += saliency[(y + dy) * size + (x + dx)]
+          count++
+        }
+      }
+      score = count > 0 ? score / count : 0
+      
+      const cx = x + regionSize / 2
+      const cy = y + regionSize / 2
+      const distFromCenter = Math.sqrt(
+        Math.pow((cx / size) - 0.5, 2) +
+        Math.pow((cy / size) - 0.5, 2)
+      )
+      score *= (1 + (1 - distFromCenter) * 0.1)
+      
+      if (score > maxScore) {
+        maxScore = score
+        bestX = cx
+        bestY = cy
+      }
+    }
+  }
+  
+  if (maxScore < 0.001) {
+    return { x: 50, y: 50 }
+  }
+  
+  return {
+    x: Math.max(15, Math.min(85, (bestX / size) * 100)),
+    y: Math.max(15, Math.min(85, (bestY / size) * 100))
+  }
+}
+
+// ============================================================
+// 工具函数
+// ============================================================
+function isHistoryData(item) {
+  if (!item) return false
+  if (item.isHistory) return true
+  if (item.urlbase && item.urlbase.includes('/originals/')) return true
+  if (item.urlbase && item.urlbase.startsWith('http') && !item.urlbase.includes('bing.com')) return true
+  return false
+}
+
+function isBingData(item) {
+  if (!item) return false
+  if (!item.urlbase) return false
+  return item.urlbase.includes('th?id=')
+}
+
+function getImageUrl(item, resolution) {
+  if (!item) return ''
+  
+  // 本地历史数据：返回原图
+  if (isHistoryData(item)) {
+    return item.urlbase || item.thumb || ''
+  }
+  
+  // 必应数据：替换分辨率后缀
+  if (isBingData(item)) {
+    const resMap = {
+      'thumb': '_400x240.jpg',
+      'hd': '_1920x1200.jpg',
+      'fhd': '_1920x1080.jpg',
+      'uhd': '_UHD.jpg',
+      '4k': '_UHD.jpg',
+      'mobile': '_1080x1920.jpg',
+      'mobile_s': '_768x1280.jpg'
+    }
+    const suffix = resMap[resolution] || '_1920x1080.jpg'
+    // 如果 urlbase 已经包含完整域名
+    if (item.urlbase.startsWith('http')) {
+      return item.urlbase.replace(/_[^_]+\.jpg$/, suffix)
+    }
+    return 'https://www.bing.com' + item.urlbase + suffix
+  }
+  
+  // 其他情况
+  if (item.urlbase && item.urlbase.startsWith('http')) return item.urlbase
+  return item.urlbase || ''
 }
 
 function getThumbUrl(item) {
   if (!item) return ''
-  if (item.isHistory) return item.thumb || item.urlbase || ''
+  
+  // 本地历史数据：返回原图（缩略图直接用原图）
+  if (isHistoryData(item)) {
+    return item.thumb || item.urlbase || ''
+  }
+  
+  // 必应数据：返回缩略图
+  if (isBingData(item)) {
+    if (item.urlbase.startsWith('http')) {
+      return item.urlbase.replace(/_[^_]+\.jpg$/, '_400x240.jpg')
+    }
+    return 'https://www.bing.com' + item.urlbase + '_400x240.jpg'
+  }
+  
   if (item.urlbase && item.urlbase.startsWith('http')) return item.urlbase
   return 'https://www.bing.com' + (item.urlbase || '') + '_400x240.jpg'
 }
@@ -360,7 +642,7 @@ function scrollToTop() {
 }
 
 // ============================================================
-// 预览 - ★★★ 移动端自动使用竖屏 ★★★
+// 预览
 // ============================================================
 function openPreview(item) {
   const idx = allData.value.findIndex(d =>
@@ -374,11 +656,20 @@ function openPreview(item) {
   translateX.value = 0
   translateY.value = 0
   
-  // ★★★ 移动端使用竖屏，桌面端使用横屏 ★★★
   const isMobile = window.innerWidth < 768
-  const resolution = isMobile ? 'mobile_s' : 'fhd'
-  const imgSrc = getImageUrl(previewItem.value, resolution)
-  previewUrl.value = imgSrc
+  
+  // 判断数据类型
+  if (isHistoryData(previewItem.value)) {
+    // 历史数据：显示原图
+    previewUrl.value = previewItem.value.urlbase || previewItem.value.thumb || ''
+  } else if (isBingData(previewItem.value)) {
+    // 必应数据：根据设备选择分辨率
+    const resolution = isMobile ? 'mobile_s' : 'fhd'
+    previewUrl.value = getImageUrl(previewItem.value, resolution)
+  } else {
+    previewUrl.value = previewItem.value.urlbase || ''
+  }
+  
   previewVisible.value = true
   toolbarVisible.value = true
   dropdownOpen.value = false
@@ -415,11 +706,17 @@ function updatePreview() {
   translateY.value = 0
   
   previewItem.value = allData.value[previewIndex.value]
-  // ★★★ 移动端使用竖屏，桌面端使用横屏 ★★★
   const isMobile = window.innerWidth < 768
-  const resolution = isMobile ? 'mobile_s' : 'fhd'
-  const imgSrc = getImageUrl(previewItem.value, resolution)
-  previewUrl.value = imgSrc
+  
+  if (isHistoryData(previewItem.value)) {
+    previewUrl.value = previewItem.value.urlbase || previewItem.value.thumb || ''
+  } else if (isBingData(previewItem.value)) {
+    const resolution = isMobile ? 'mobile_s' : 'fhd'
+    previewUrl.value = getImageUrl(previewItem.value, resolution)
+  } else {
+    previewUrl.value = previewItem.value.urlbase || ''
+  }
+  
   updateTitle(previewItem.value)
 }
 
@@ -434,6 +731,26 @@ function updateTitle(item) {
     document.title = dateText + ' - 必应壁纸'
   } else {
     document.title = '必应壁纸 | 每日一图，带你领略世界之美'
+  }
+}
+
+// ★★★ 预览加载后检测显著性（历史数据用） ★★★
+function onPreviewLoad() {
+  imageLoaded.value = true
+  const img = previewImg.value
+  if (!img) return
+  
+  // 只有历史数据才做显著性检测
+  if (isHistoryData(previewItem.value)) {
+    detectSalientRegion(img).then(pos => {
+      if (pos && pos.x && pos.y) {
+        img.style.objectPosition = pos.x + '% ' + pos.y + '%'
+      }
+    }).catch(() => {
+      img.style.objectPosition = '50% 50%'
+    })
+  } else {
+    img.style.objectPosition = '50% 50%'
   }
 }
 
@@ -482,7 +799,7 @@ function endDrag() {
 }
 
 // ============================================================
-// 下载 - ★★★ 直接下载到本地 ★★★
+// 下载 - ★★★ 区分处理 ★★★
 // ============================================================
 function getDownloadFileName(item, resolution) {
   const urlbase = item.urlbase || ''
@@ -517,7 +834,103 @@ function getDownloadFileName(item, resolution) {
   return 'wallpaper_' + (item.startdate || item.date || Date.now()) + '_' + resolution + '.jpg'
 }
 
-// ★★★ 下载：用 fetch 下载后保存，不打开新窗口 ★★★
+async function smartCropWithSubject(blob, fileName, resolution, subjectPosition) {
+  return new Promise((resolve) => {
+    const img = new Image()
+    const url = URL.createObjectURL(blob)
+
+    img.onload = function() {
+      try {
+        const targetW = resolution === 'mobile_s' ? 768 : 1080
+        const targetH = resolution === 'mobile_s' ? 1280 : 1920
+
+        const imgW = img.width
+        const imgH = img.height
+        const targetRatio = targetW / targetH
+
+        let cropX, cropY, cropWidth, cropHeight
+        
+        if (subjectPosition) {
+          const centerX = (subjectPosition.x / 100) * imgW
+          const centerY = (subjectPosition.y / 100) * imgH
+          
+          if (imgW / imgH > targetRatio) {
+            cropHeight = imgH
+            cropWidth = imgH * targetRatio
+            cropX = Math.max(0, Math.min(imgW - cropWidth, centerX - cropWidth / 2))
+            cropY = 0
+          } else {
+            cropWidth = imgW
+            cropHeight = imgW / targetRatio
+            cropX = 0
+            cropY = Math.max(0, Math.min(imgH - cropHeight, centerY - cropHeight / 2))
+          }
+        } else {
+          if (imgW / imgH > targetRatio) {
+            cropHeight = imgH
+            cropWidth = imgH * targetRatio
+            cropX = (imgW - cropWidth) / 2
+            cropY = 0
+          } else {
+            cropWidth = imgW
+            cropHeight = imgW / targetRatio
+            cropX = 0
+            cropY = (imgH - cropHeight) / 2
+          }
+        }
+
+        const canvas = document.createElement('canvas')
+        const ctx = canvas.getContext('2d')
+        canvas.width = targetW
+        canvas.height = targetH
+
+        ctx.imageSmoothingEnabled = true
+        ctx.imageSmoothingQuality = 'high'
+        ctx.drawImage(img, cropX, cropY, cropWidth, cropHeight, 0, 0, targetW, targetH)
+
+        canvas.toBlob((croppedBlob) => {
+          if (croppedBlob) {
+            downloadBlob(croppedBlob, fileName)
+            resolve()
+          } else {
+            downloadBlob(blob, fileName)
+            resolve()
+          }
+        }, 'image/jpeg', 0.92)
+
+        URL.revokeObjectURL(url)
+      } catch (error) {
+        downloadBlob(blob, fileName)
+        resolve()
+      }
+    }
+
+    img.onerror = function() {
+      downloadBlob(blob, fileName)
+      resolve()
+    }
+
+    img.src = url
+  })
+}
+
+function downloadBlob(blob, fileName) {
+  try {
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = fileName
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    setTimeout(() => URL.revokeObjectURL(url), 3000)
+  } catch (e) {
+    const url = URL.createObjectURL(blob)
+    window.open(url, '_blank')
+    setTimeout(() => URL.revokeObjectURL(url), 10000)
+  }
+}
+
 function downloadImage(resolution) {
   if (!previewItem.value) return
   const item = previewItem.value
@@ -526,24 +939,53 @@ function downloadImage(resolution) {
 
   dropdownOpen.value = false
 
-  fetch(url)
-    .then(res => {
-      if (!res.ok) throw new Error('下载失败')
-      return res.blob()
-    })
-    .then(blob => {
-      const link = document.createElement('a')
-      link.href = URL.createObjectURL(blob)
-      link.download = fileName
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      setTimeout(() => URL.revokeObjectURL(link.href), 3000)
-    })
-    .catch(() => {
-      // 降级方案：直接打开
-      window.open(url, '_blank')
-    })
+  // ★★★ 判断是否是本地历史数据 ★★★
+  const isHistory = isHistoryData(item)
+
+  if (isHistory && (resolution === 'mobile' || resolution === 'mobile_s')) {
+    // 历史数据 + 手机尺寸 → 前端裁剪
+    fetch(url)
+      .then(res => {
+        if (!res.ok) throw new Error('下载失败')
+        return res.blob()
+      })
+      .then(async (blob) => {
+        const img = new Image()
+        const imgUrl = URL.createObjectURL(blob)
+        img.src = imgUrl
+        await new Promise((resolve) => { img.onload = resolve; img.onerror = resolve })
+        
+        let subjectPosition = null
+        try {
+          subjectPosition = await detectSalientRegion(img)
+        } catch (e) {}
+        URL.revokeObjectURL(imgUrl)
+        
+        return smartCropWithSubject(blob, fileName, resolution, subjectPosition)
+      })
+      .catch(() => {
+        window.open(url, '_blank')
+      })
+  } else {
+    // 必应数据 或 非手机尺寸 → 直接下载
+    fetch(url)
+      .then(res => {
+        if (!res.ok) throw new Error('下载失败')
+        return res.blob()
+      })
+      .then(blob => {
+        const link = document.createElement('a')
+        link.href = URL.createObjectURL(blob)
+        link.download = fileName
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        setTimeout(() => URL.revokeObjectURL(link.href), 3000)
+      })
+      .catch(() => {
+        window.open(url, '_blank')
+      })
+  }
 }
 
 // ============================================================
@@ -851,7 +1293,7 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 }
 .back-to-top { display: flex; }
 
-/* ===== ★★★ 预览 - 透明背景可见首页 ★★★ ===== */
+/* ===== ★★★ 预览 ★★★ ===== */
 
 .preview-overlay { 
   display: none; 
