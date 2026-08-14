@@ -16,6 +16,8 @@
 </template>
 
 <script setup>
+import { ref } from 'vue'  // ← 加这一行！
+
 const props = defineProps({
   src: {
     type: String,
