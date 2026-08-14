@@ -1349,7 +1349,7 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
   cursor: default; 
   -webkit-tap-highlight-color: transparent; 
 }
-.preview-overlay.active { display: flex; }
+
 
 .preview-overlay::before { 
   content: ''; 
@@ -1373,6 +1373,8 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
   align-items: center;
   justify-content: center;
   z-index: 1;
+  transform: none;
+  opacity: 1;
 }
 
 .preview-image {
