@@ -80,26 +80,27 @@
           <div class="loading-text">加载中...</div>
         </div>
         <img 
-          ref="previewImg" 
-          class="preview-image" 
-          :class="{ loaded: imageLoaded }"
-          :src="previewUrl" 
-          alt="预览" 
-          crossorigin="anonymous" 
-          @load="onPreviewLoad" 
-          @click="toggleToolbar"
-          @wheel="onWheelZoom"
-          @mousedown="startDrag"
-          @touchstart="startDrag"
-          @mousemove="moveDrag"
-          @touchmove="moveDrag"
-          @mouseup="endDrag"
-          @touchend="endDrag"
-          :style="{
-            transform: 'translate(' + translateX + 'px, ' + translateY + 'px) scale(' + scale + ')',
-            cursor: scale > 1 ? 'grab' : 'default'
-          }"
-        />
+  ref="previewImg" 
+  class="preview-image" 
+  :class="{ loaded: imageLoaded }"
+  :src="previewUrl" 
+  alt="预览" 
+  crossorigin="anonymous" 
+  @load="onPreviewLoad" 
+  @click="toggleToolbar"
+  @wheel="onWheelZoom"
+  @mousedown="startDrag"
+  @touchstart="startDrag"
+  @mousemove="moveDrag"
+  @touchmove="moveDrag"
+  @mouseup="endDrag"
+  @touchend="endDrag"
+  :style="{
+    transform: 'translate(' + translateX + 'px, ' + translateY + 'px) scale(' + scale + ')',
+    cursor: scale > 1 ? 'grab' : 'default',
+    transition: 'none'
+  }"
+/>
       </div>
 
       <div class="toolbar" :class="{ hidden: !toolbarVisible }">
