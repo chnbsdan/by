@@ -80,27 +80,27 @@
           <div class="loading-text">加载中...</div>
         </div>
         <img 
-  ref="previewImg" 
-  class="preview-image" 
-  :class="{ loaded: imageLoaded }"
-  :src="previewUrl" 
-  alt="预览" 
-  crossorigin="anonymous" 
-  @load="onPreviewLoad" 
-  @click="toggleToolbar"
-  @wheel="onWheelZoom"
-  @mousedown="startDrag"
-  @touchstart="startDrag"
-  @mousemove="moveDrag"
-  @touchmove="moveDrag"
-  @mouseup="endDrag"
-  @touchend="endDrag"
-  :style="{
-    transform: 'translate(' + translateX + 'px, ' + translateY + 'px) scale(' + scale + ')',
-    cursor: scale > 1 ? 'grab' : 'default',
-    transition: 'none'
-  }"
-/>
+          ref="previewImg" 
+          class="preview-image" 
+          :class="{ loaded: imageLoaded }"
+          :src="previewUrl" 
+          alt="预览" 
+          crossorigin="anonymous" 
+          @load="onPreviewLoad" 
+          @click="toggleToolbar"
+          @wheel="onWheelZoom"
+          @mousedown="startDrag"
+          @touchstart="startDrag"
+          @mousemove="moveDrag"
+          @touchmove="moveDrag"
+          @mouseup="endDrag"
+          @touchend="endDrag"
+          :style="{
+            transform: 'translate(' + translateX + 'px, ' + translateY + 'px) scale(' + scale + ')',
+            cursor: scale > 1 ? 'grab' : 'default',
+            transition: 'none'
+          }"
+        />
       </div>
 
       <div class="toolbar" :class="{ hidden: !toolbarVisible }">
@@ -160,9 +160,6 @@ import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
 
 // ============================================================
 // ★★★ 增强版显著性检测（三合一） ★★★
-// 1. 灰度图检测 → 解决白色动物在雪地的问题
-// 2. 彩色图检测 → 解决彩色主体的问题  
-// 3. 边缘检测 → 解决轮廓问题
 // ============================================================
 
 function detectSalientRegion(imageElement) {
@@ -193,7 +190,6 @@ function doEnhancedDetect(img) {
     const imageData = ctx.getImageData(0, 0, size, size)
     const data = imageData.data
     
-    // 转灰度
     const gray = new Float32Array(size * size)
     const r = new Float32Array(size * size)
     const g = new Float32Array(size * size)
@@ -207,7 +203,6 @@ function doEnhancedDetect(img) {
       gray[i] = 0.299 * r[i] + 0.587 * g[i] + 0.114 * b[i]
     }
     
-    // 三种检测融合
     const graySaliency = computeGraySaliency(gray, size)
     const colorSaliency = computeColorSaliency(r, g, b, size)
     const edgeSaliency = computeEdgeSaliency(gray, size)
@@ -225,7 +220,6 @@ function doEnhancedDetect(img) {
   }
 }
 
-// 灰度显著度
 function computeGraySaliency(gray, size) {
   const result = new Float32Array(size * size)
   const half = 16
@@ -259,7 +253,6 @@ function computeGraySaliency(gray, size) {
   return gaussianBlur(result, size, 6)
 }
 
-// 彩色显著度
 function computeColorSaliency(r, g, b, size) {
   const result = new Float32Array(size * size)
   const half = 14
@@ -292,7 +285,6 @@ function computeColorSaliency(r, g, b, size) {
         Math.pow(b[idx] - meanB, 2)
       )
       
-      // 降低高饱和度的权重（红色果子不会被过度强调）
       const sat = Math.max(r[idx], g[idx], b[idx]) - Math.min(r[idx], g[idx], b[idx])
       const satWeight = 1 - (sat / 255) * 0.15
       
@@ -302,7 +294,6 @@ function computeColorSaliency(r, g, b, size) {
   return gaussianBlur(result, size, 6)
 }
 
-// 边缘显著度
 function computeEdgeSaliency(gray, size) {
   const edges = new Float32Array(size * size)
   
@@ -322,7 +313,6 @@ function computeEdgeSaliency(gray, size) {
     }
   }
   
-  // 膨胀边缘
   const dilated = new Float32Array(size * size)
   const radius = 3
   for (let y = 0; y < size; y++) {
@@ -342,7 +332,6 @@ function computeEdgeSaliency(gray, size) {
   return dilated
 }
 
-// 高斯模糊
 function gaussianBlur(data, size, radius) {
   const result = new Float32Array(data.length)
   const sigma = radius / 2
@@ -367,7 +356,6 @@ function gaussianBlur(data, size, radius) {
   return result
 }
 
-// 找到最佳区域
 function findBestRegion(saliency, size, origWidth, origHeight) {
   let maxScore = 0
   let bestX = size / 2
@@ -1337,14 +1325,14 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 }
 .back-to-top { display: flex; }
 
-/* ===== ★★★ 预览 ★★★ ===== */
+/* ===== ★★★ 预览 - 透明背景可见首页 ★★★ ===== */
 
 .preview-overlay { 
   display: none; 
   position: fixed; 
   top: 0; left: 0; right: 0; bottom: 0; 
   z-index: 2000; 
-  background: rgba(0,0,0,0.1);
+  background: rgba(0,0,0,0.05);
   justify-content: center; 
   align-items: center; 
   cursor: default; 
@@ -1364,11 +1352,12 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
   align-items: center;
   justify-content: center;
   z-index: 1;
-  background: rgba(0,0,0,0.15);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: rgba(0,0,0,0.1);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   border-radius: 16px;
   overflow: hidden;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.15);
 }
 
 .preview-image {
@@ -1406,6 +1395,17 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 }
 .preview-loading .loading-text {
   font-size: 14px;
+}
+
+@media (max-width: 768px) {
+  .preview-container {
+    width: 96vw;
+    height: 80vh;
+    border-radius: 12px;
+    background: rgba(0,0,0,0.08);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
 }
 
 /* ===== 箭头 ===== */
