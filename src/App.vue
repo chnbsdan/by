@@ -1327,7 +1327,6 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 
 /* ===== ★★★ 预览 - 透明背景可见首页 ★★★ ===== */
 
-
 .preview-overlay { 
   display: none; 
   position: fixed; 
@@ -1353,12 +1352,12 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
   align-items: center;
   justify-content: center;
   z-index: 1;
-  background: rgba(255,255,255,0.05);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   border-radius: 16px;
   overflow: hidden;
-  box-shadow: 0 8px 40px rgba(0,0,0,0.1);
+  box-shadow: none;
 }
 
 .preview-image {
