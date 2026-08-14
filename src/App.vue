@@ -423,8 +423,10 @@ function findBestRegion(saliency, size, origWidth, origHeight) {
 }
 
 // ============================================================
-// 工具函数
+// 工具函数 - 判断数据类型
 // ============================================================
+
+// ★★★ 判断是否是历史数据（本地图片） ★★★
 function isHistoryData(item) {
   if (!item) return false
   if (item.isHistory) return true
@@ -433,6 +435,7 @@ function isHistoryData(item) {
   return false
 }
 
+// ★★★ 判断是否是必应数据 ★★★
 function isBingData(item) {
   if (!item) return false
   if (!item.urlbase) return false
@@ -661,7 +664,6 @@ function prevPreview() {
   if (previewIndex.value > 0) {
     previewIndex.value--
     updatePreview()
-    // ★★★ 切换时不改变 toolbarVisible，保持当前状态 ★★★
   }
 }
 
@@ -669,7 +671,6 @@ function nextPreview() {
   if (previewIndex.value < allData.value.length - 1) {
     previewIndex.value++
     updatePreview()
-    // ★★★ 切换时不改变 toolbarVisible，保持当前状态 ★★★
   }
 }
 
@@ -753,7 +754,7 @@ function endDrag() {
 }
 
 // ============================================================
-// 下载
+// 下载 - ★★★ 历史数据手机壁纸智能裁剪 ★★★
 // ============================================================
 function getDownloadFileName(item, resolution) {
   const urlbase = item.urlbase || ''
@@ -885,6 +886,7 @@ function downloadBlob(blob, fileName) {
   }
 }
 
+// ★★★ 下载核心函数 - 区分历史数据和必应数据 ★★★
 function downloadImage(resolution) {
   if (!previewItem.value) return
   const item = previewItem.value
@@ -893,8 +895,10 @@ function downloadImage(resolution) {
 
   dropdownOpen.value = false
 
+  // ★★★ 判断是否是历史数据 ★★★
   const isHistory = isHistoryData(item)
 
+  // ★★★ 历史数据 + 手机尺寸 → 前端智能裁剪 ★★★
   if (isHistory && (resolution === 'mobile' || resolution === 'mobile_s')) {
     fetch(url)
       .then(res => {
@@ -902,23 +906,27 @@ function downloadImage(resolution) {
         return res.blob()
       })
       .then(async (blob) => {
+        // 加载图片到 Image 对象
         const img = new Image()
         const imgUrl = URL.createObjectURL(blob)
         img.src = imgUrl
         await new Promise((resolve) => { img.onload = resolve; img.onerror = resolve })
         
+        // 检测主体位置
         let subjectPosition = null
         try {
           subjectPosition = await detectSalientRegion(img)
         } catch (e) {}
         URL.revokeObjectURL(imgUrl)
         
+        // 智能裁剪
         return smartCropWithSubject(blob, fileName, resolution, subjectPosition)
       })
       .catch(() => {
         window.open(url, '_blank')
       })
   } else {
+    // ★★★ 必应数据 或 非手机尺寸 → 直接下载 ★★★
     fetch(url)
       .then(res => {
         if (!res.ok) throw new Error('下载失败')
