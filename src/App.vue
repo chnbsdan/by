@@ -44,7 +44,7 @@
           :alt="item.copyright || item.date" 
           loading="lazy" 
           crossorigin="anonymous" 
-          @load="handleCardImageLoad(item, $event)" 
+          @load="item._loaded = true" 
           @error="item._loaded = true"
           :class="{ loaded: item._loaded }"
         />
@@ -86,7 +86,7 @@
           :src="previewUrl" 
           alt="预览" 
           crossorigin="anonymous" 
-          @load="onPreviewLoad" 
+          @load="imageLoaded = true" 
           @click="toggleToolbar"
           @wheel="onWheelZoom"
           @mousedown="startDrag"
@@ -156,326 +156,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
-
-// ============================================================
-// ★★★ 增强版显著性检测（三合一） ★★★
-// ============================================================
-
-function detectSalientRegion(imageElement) {
-  return new Promise((resolve) => {
-    const img = imageElement
-    if (!img.complete) {
-      img.onload = () => resolve(doEnhancedDetect(img))
-      img.onerror = () => resolve({ x: 50, y: 50 })
-      return
-    }
-    resolve(doEnhancedDetect(img))
-  })
-}
-
-function doEnhancedDetect(img) {
-  try {
-    const width = img.naturalWidth || img.width
-    const height = img.naturalHeight || img.height
-    if (width === 0 || height === 0) return { x: 50, y: 50 }
-    
-    const size = 256
-    const canvas = document.createElement('canvas')
-    const ctx = canvas.getContext('2d', { willReadFrequently: true })
-    canvas.width = size
-    canvas.height = size
-    ctx.drawImage(img, 0, 0, size, size)
-    
-    const imageData = ctx.getImageData(0, 0, size, size)
-    const data = imageData.data
-    
-    const gray = new Float32Array(size * size)
-    const r = new Float32Array(size * size)
-    const g = new Float32Array(size * size)
-    const b = new Float32Array(size * size)
-    
-    for (let i = 0; i < size * size; i++) {
-      const idx = i * 4
-      r[i] = data[idx]
-      g[i] = data[idx + 1]
-      b[i] = data[idx + 2]
-      gray[i] = 0.299 * r[i] + 0.587 * g[i] + 0.114 * b[i]
-    }
-    
-    const graySaliency = computeGraySaliency(gray, size)
-    const colorSaliency = computeColorSaliency(r, g, b, size)
-    const edgeSaliency = computeEdgeSaliency(gray, size)
-    
-    const combined = new Float32Array(size * size)
-    for (let i = 0; i < size * size; i++) {
-      combined[i] = graySaliency[i] * 0.4 + colorSaliency[i] * 0.3 + edgeSaliency[i] * 0.3
-    }
-    
-    return findBestRegion(combined, size, width, height)
-    
-  } catch (e) {
-    console.warn('检测失败:', e)
-    return { x: 50, y: 50 }
-  }
-}
-
-function computeGraySaliency(gray, size) {
-  const result = new Float32Array(size * size)
-  const half = 16
-  const step = 2
-  
-  for (let y = half; y < size - half; y += step) {
-    for (let x = half; x < size - half; x += step) {
-      const idx = y * size + x
-      const center = gray[idx]
-      
-      let sum = 0, sumSq = 0, count = 0
-      for (let dy = -half; dy <= half; dy += 2) {
-        for (let dx = -half; dx <= half; dx += 2) {
-          if (dx === 0 && dy === 0) continue
-          const ni = (y + dy) * size + (x + dx)
-          const val = gray[ni]
-          sum += val
-          sumSq += val * val
-          count++
-        }
-      }
-      
-      if (count === 0) continue
-      const mean = sum / count
-      const variance = sumSq / count - mean * mean
-      const contrast = Math.abs(center - mean)
-      const brightnessNorm = 1 + (center / 255) * 0.2
-      result[idx] = contrast * Math.sqrt(variance + 1) * brightnessNorm
-    }
-  }
-  return gaussianBlur(result, size, 6)
-}
-
-function computeColorSaliency(r, g, b, size) {
-  const result = new Float32Array(size * size)
-  const half = 14
-  const step = 2
-  
-  for (let y = half; y < size - half; y += step) {
-    for (let x = half; x < size - half; x += step) {
-      const idx = y * size + x
-      
-      let sumR = 0, sumG = 0, sumB = 0, count = 0
-      for (let dy = -half; dy <= half; dy += 2) {
-        for (let dx = -half; dx <= half; dx += 2) {
-          if (dx === 0 && dy === 0) continue
-          const ni = (y + dy) * size + (x + dx)
-          sumR += r[ni]
-          sumG += g[ni]
-          sumB += b[ni]
-          count++
-        }
-      }
-      
-      if (count === 0) continue
-      const meanR = sumR / count
-      const meanG = sumG / count
-      const meanB = sumB / count
-      
-      const colorDist = Math.sqrt(
-        Math.pow(r[idx] - meanR, 2) +
-        Math.pow(g[idx] - meanG, 2) +
-        Math.pow(b[idx] - meanB, 2)
-      )
-      
-      const sat = Math.max(r[idx], g[idx], b[idx]) - Math.min(r[idx], g[idx], b[idx])
-      const satWeight = 1 - (sat / 255) * 0.15
-      
-      result[idx] = colorDist * satWeight
-    }
-  }
-  return gaussianBlur(result, size, 6)
-}
-
-function computeEdgeSaliency(gray, size) {
-  const edges = new Float32Array(size * size)
-  
-  for (let y = 1; y < size - 1; y++) {
-    for (let x = 1; x < size - 1; x++) {
-      const idx = y * size + x
-      const gx = 
-        -gray[(y-1) * size + (x-1)] + gray[(y-1) * size + (x+1)]
-        -2 * gray[y * size + (x-1)] + 2 * gray[y * size + (x+1)]
-        -gray[(y+1) * size + (x-1)] + gray[(y+1) * size + (x+1)]
-      
-      const gy = 
-        -gray[(y-1) * size + (x-1)] - 2 * gray[(y-1) * size + x] - gray[(y-1) * size + (x+1)]
-        +gray[(y+1) * size + (x-1)] + 2 * gray[(y+1) * size + x] + gray[(y+1) * size + (x+1)]
-      
-      edges[idx] = Math.min(1, Math.sqrt(gx * gx + gy * gy) / 255)
-    }
-  }
-  
-  const dilated = new Float32Array(size * size)
-  const radius = 3
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      let maxVal = 0
-      for (let dy = -radius; dy <= radius; dy++) {
-        for (let dx = -radius; dx <= radius; dx++) {
-          const px = x + dx, py = y + dy
-          if (px < 0 || px >= size || py < 0 || py >= size) continue
-          const val = edges[py * size + px]
-          if (val > maxVal) maxVal = val
-        }
-      }
-      dilated[y * size + x] = maxVal
-    }
-  }
-  return dilated
-}
-
-function gaussianBlur(data, size, radius) {
-  const result = new Float32Array(data.length)
-  const sigma = radius / 2
-  const half = Math.floor(radius / 2)
-  
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      let sum = 0, weightSum = 0
-      for (let dy = -half; dy <= half; dy++) {
-        for (let dx = -half; dx <= half; dx++) {
-          const px = x + dx, py = y + dy
-          if (px < 0 || px >= size || py < 0 || py >= size) continue
-          const dist = dx * dx + dy * dy
-          const weight = Math.exp(-dist / (2 * sigma * sigma))
-          sum += data[py * size + px] * weight
-          weightSum += weight
-        }
-      }
-      result[y * size + x] = weightSum > 0 ? sum / weightSum : 0
-    }
-  }
-  return result
-}
-
-function findBestRegion(saliency, size, origWidth, origHeight) {
-  let maxScore = 0
-  let bestX = size / 2
-  let bestY = size / 2
-  const regionSize = Math.min(40, Math.floor(size * 0.2))
-  
-  for (let y = 0; y < size - regionSize; y += 2) {
-    for (let x = 0; x < size - regionSize; x += 2) {
-      let score = 0
-      let count = 0
-      for (let dy = 0; dy < regionSize; dy += 2) {
-        for (let dx = 0; dx < regionSize; dx += 2) {
-          score += saliency[(y + dy) * size + (x + dx)]
-          count++
-        }
-      }
-      score = count > 0 ? score / count : 0
-      
-      const cx = x + regionSize / 2
-      const cy = y + regionSize / 2
-      const distFromCenter = Math.sqrt(
-        Math.pow((cx / size) - 0.5, 2) +
-        Math.pow((cy / size) - 0.5, 2)
-      )
-      score *= (1 + (1 - distFromCenter) * 0.1)
-      
-      if (score > maxScore) {
-        maxScore = score
-        bestX = cx
-        bestY = cy
-      }
-    }
-  }
-  
-  if (maxScore < 0.001) {
-    return { x: 50, y: 50 }
-  }
-  
-  return {
-    x: Math.max(15, Math.min(85, (bestX / size) * 100)),
-    y: Math.max(15, Math.min(85, (bestY / size) * 100))
-  }
-}
-
-// ★★★ 快速 X 轴检测（卡片缩略图用） ★★★
-function detectSalientX(imageElement) {
-  return new Promise((resolve) => {
-    const img = imageElement
-    if (!img.complete) {
-      img.onload = () => resolve(doFastXDetect(img))
-      img.onerror = () => resolve(50)
-      return
-    }
-    resolve(doFastXDetect(img))
-  })
-}
-
-function doFastXDetect(img) {
-  try {
-    const width = img.naturalWidth || img.width
-    const height = img.naturalHeight || img.height
-    if (width === 0 || height === 0) return 50
-    
-    const targetW = 200
-    const scale = targetW / width
-    const targetH = Math.floor(height * scale)
-    
-    const canvas = document.createElement('canvas')
-    const ctx = canvas.getContext('2d', { willReadFrequently: true })
-    canvas.width = targetW
-    canvas.height = targetH
-    ctx.drawImage(img, 0, 0, targetW, targetH)
-    
-    const imageData = ctx.getImageData(0, 0, targetW, targetH)
-    const data = imageData.data
-    
-    const gray = new Float32Array(targetW * targetH)
-    for (let i = 0; i < targetW * targetH; i++) {
-      const idx = i * 4
-      gray[i] = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2]
-    }
-    
-    const colScores = new Float32Array(targetW)
-    const step = 2
-    
-    for (let x = 0; x < targetW; x += step) {
-      let sum = 0, count = 0
-      for (let y = 1; y < targetH - 1; y += step) {
-        const idx = y * targetW + x
-        const dx = Math.abs(gray[idx + 1] - gray[idx - 1])
-        const dy = Math.abs(gray[(y + 1) * targetW + x] - gray[(y - 1) * targetW + x])
-        sum += Math.sqrt(dx * dx + dy * dy)
-        count++
-      }
-      colScores[x] = count > 0 ? sum / count : 0
-    }
-    
-    const windowSize = Math.min(30, Math.floor(targetW * 0.2))
-    let maxScore = 0
-    let bestX = targetW / 2
-    
-    for (let x = 0; x < targetW - windowSize; x += 2) {
-      let score = 0
-      for (let i = 0; i < windowSize && x + i < targetW; i++) {
-        score += colScores[x + i]
-      }
-      const centerDist = Math.abs((x + windowSize / 2) / targetW - 0.5)
-      score *= (1 + (1 - centerDist) * 0.1)
-      
-      if (score > maxScore) {
-        maxScore = score
-        bestX = x + windowSize / 2
-      }
-    }
-    
-    return Math.max(15, Math.min(85, (bestX / targetW) * 100))
-  } catch (e) {
-    return 50
-  }
-}
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 
 // ============================================================
 // 状态
@@ -519,19 +200,23 @@ const lastTranslateY = ref(0)
 const commentVisible = ref(false)
 
 // ============================================================
-// 工具函数
+// 工具函数 - ★★★ 核心修改：直接使用必应接口 ★★★
 // ============================================================
 function getImageUrl(item, resolution) {
   if (!item) return ''
   if (item.isHistory) return item.urlbase || ''
   if (item.urlbase && item.urlbase.startsWith('http')) return item.urlbase
+  
   const resMap = {
     'thumb': '_400x240.jpg',
     'hd': '_1920x1200.jpg',
     'fhd': '_1920x1080.jpg',
     'uhd': '_UHD.jpg',
-    '4k': '_UHD.jpg'
+    '4k': '_UHD.jpg',
+    'mobile': '_1080x1920.jpg',
+    'mobile_s': '_768x1280.jpg'
   }
+  
   const suffix = resMap[resolution] || '_1920x1080.jpg'
   return 'https://www.bing.com' + (item.urlbase || '') + suffix
 }
@@ -541,27 +226,6 @@ function getThumbUrl(item) {
   if (item.isHistory) return item.thumb || item.urlbase || ''
   if (item.urlbase && item.urlbase.startsWith('http')) return item.urlbase
   return 'https://www.bing.com' + (item.urlbase || '') + '_400x240.jpg'
-}
-
-// ★★★ 卡片缩略图智能定位 ★★★
-async function handleCardImageLoad(item, event) {
-  const img = event.target
-  if (!img) return
-  
-  if (window.innerWidth > 768) {
-    img.style.objectPosition = '50% 50%'
-    item._loaded = true
-    return
-  }
-  
-  try {
-    const posX = await detectSalientX(img)
-    img.style.objectPosition = posX + '% 50%'
-  } catch (e) {
-    img.style.objectPosition = '50% 50%'
-  }
-  
-  item._loaded = true
 }
 
 // ============================================================
@@ -678,13 +342,6 @@ function resetSearch() {
 }
 
 // ============================================================
-// 导航
-// ============================================================
-function toggleNav() {
-  navOpen.value = !navOpen.value
-}
-
-// ============================================================
 // 滚动
 // ============================================================
 function checkScroll() {
@@ -724,11 +381,6 @@ function openPreview(item) {
   dropdownOpen.value = false
   document.body.style.overflow = 'hidden'
   updateTitle(previewItem.value)
-  
-  const overlay = document.querySelector('.preview-overlay')
-  if (overlay) {
-    overlay.style.setProperty('--bg-url', 'url(' + imgSrc + ')')
-  }
 }
 
 function closePreview() {
@@ -763,11 +415,6 @@ function updatePreview() {
   const imgSrc = getImageUrl(previewItem.value, 'fhd')
   previewUrl.value = imgSrc
   updateTitle(previewItem.value)
-  
-  const overlay = document.querySelector('.preview-overlay')
-  if (overlay) {
-    overlay.style.setProperty('--bg-url', 'url(' + imgSrc + ')')
-  }
 }
 
 function updateTitle(item) {
@@ -782,21 +429,6 @@ function updateTitle(item) {
   } else {
     document.title = '必应壁纸 | 每日一图，带你领略世界之美'
   }
-}
-
-// ★★★ 预览大图智能居中 ★★★
-function onPreviewLoad() {
-  imageLoaded.value = true
-  const img = previewImg.value
-  if (!img) return
-  
-  detectSalientRegion(img).then(pos => {
-    if (pos && pos.x && pos.y) {
-      img.style.objectPosition = pos.x + '% ' + pos.y + '%'
-    }
-  }).catch(() => {
-    img.style.objectPosition = '50% 50%'
-  })
 }
 
 function toggleToolbar() {
@@ -844,7 +476,7 @@ function endDrag() {
 }
 
 // ============================================================
-// 下载
+// 下载 - ★★★ 简化：直接用必应接口下载 ★★★
 // ============================================================
 function getDownloadFileName(item, resolution) {
   const urlbase = item.urlbase || ''
@@ -879,128 +511,23 @@ function getDownloadFileName(item, resolution) {
   return 'wallpaper_' + (item.startdate || item.date || Date.now()) + '_' + resolution + '.jpg'
 }
 
-async function smartCropWithSubject(blob, fileName, resolution, subjectPosition) {
-  return new Promise((resolve) => {
-    const img = new Image()
-    const url = URL.createObjectURL(blob)
-
-    img.onload = function() {
-      try {
-        const targetW = resolution === 'mobile_s' ? 768 : 1080
-        const targetH = resolution === 'mobile_s' ? 1280 : 1920
-
-        const imgW = img.width
-        const imgH = img.height
-        const targetRatio = targetW / targetH
-
-        let cropX, cropY, cropWidth, cropHeight
-        
-        if (subjectPosition) {
-          const centerX = (subjectPosition.x / 100) * imgW
-          const centerY = (subjectPosition.y / 100) * imgH
-          
-          if (imgW / imgH > targetRatio) {
-            cropHeight = imgH
-            cropWidth = imgH * targetRatio
-            cropX = Math.max(0, Math.min(imgW - cropWidth, centerX - cropWidth / 2))
-            cropY = 0
-          } else {
-            cropWidth = imgW
-            cropHeight = imgW / targetRatio
-            cropX = 0
-            cropY = Math.max(0, Math.min(imgH - cropHeight, centerY - cropHeight / 2))
-          }
-        } else {
-          if (imgW / imgH > targetRatio) {
-            cropHeight = imgH
-            cropWidth = imgH * targetRatio
-            cropX = (imgW - cropWidth) / 2
-            cropY = 0
-          } else {
-            cropWidth = imgW
-            cropHeight = imgW / targetRatio
-            cropX = 0
-            cropY = (imgH - cropHeight) / 2
-          }
-        }
-
-        const canvas = document.createElement('canvas')
-        const ctx = canvas.getContext('2d')
-        canvas.width = targetW
-        canvas.height = targetH
-
-        ctx.imageSmoothingEnabled = true
-        ctx.imageSmoothingQuality = 'high'
-        ctx.drawImage(img, cropX, cropY, cropWidth, cropHeight, 0, 0, targetW, targetH)
-
-        canvas.toBlob((croppedBlob) => {
-          if (croppedBlob) {
-            downloadBlob(croppedBlob, fileName)
-            resolve()
-          } else {
-            downloadBlob(blob, fileName)
-            resolve()
-          }
-        }, 'image/jpeg', 0.92)
-
-        URL.revokeObjectURL(url)
-      } catch (error) {
-        downloadBlob(blob, fileName)
-        resolve()
-      }
-    }
-
-    img.onerror = function() {
-      downloadBlob(blob, fileName)
-      resolve()
-    }
-
-    img.src = url
-  })
-}
-
+// ★★★ 核心修改：直接使用必应接口下载，不再前端裁剪 ★★★
 function downloadImage(resolution) {
   if (!previewItem.value) return
   const item = previewItem.value
   const fileName = getDownloadFileName(item, resolution)
-  const url = getImageUrl(item, 'uhd')
-  const isMobile = resolution === 'mobile' || resolution === 'mobile_s'
+  const url = getImageUrl(item, resolution)
 
   dropdownOpen.value = false
 
-  fetch(url, { mode: 'cors' })
-    .then(res => {
-      if (!res.ok) throw new Error('网络请求失败')
-      return res.blob()
-    })
-    .then(async (blob) => {
-      if (isMobile) {
-        const img = new Image()
-        const imgUrl = URL.createObjectURL(blob)
-        img.src = imgUrl
-        await new Promise((resolve) => { img.onload = resolve; img.onerror = resolve })
-        
-        let subjectPosition = null
-        try {
-          const pos = await detectSalientRegion(img)
-          subjectPosition = pos
-        } catch (e) {}
-        URL.revokeObjectURL(imgUrl)
-        
-        return smartCropWithSubject(blob, fileName, resolution, subjectPosition)
-      } else {
-        downloadBlob(blob, fileName)
-      }
-    })
-    .catch(() => {
-      const link = document.createElement('a')
-      link.href = url
-      link.download = fileName
-      link.target = '_blank'
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-    })
+  // 直接使用必应接口的图片URL下载
+  const link = document.createElement('a')
+  link.href = url
+  link.download = fileName
+  link.target = '_blank'
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
 }
 
 function downloadBlob(blob, fileName) {
