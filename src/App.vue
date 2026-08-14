@@ -132,8 +132,8 @@
 
 <script setup>
 import { ref, onMounted, onBeforeUnmount } from 'vue'
-import UiDialog from '~/components/ui/dialog.vue'
-import UiImage from '~/components/ui/image.vue'
+import UiDialog from './components/ui/dialog.vue'
+import UiImage from './components/ui/image.vue'
 
 // ============================================================
 // 状态
