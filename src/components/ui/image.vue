@@ -16,7 +16,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'  // ← 加这一行！
+import { ref } from 'vue'
 
 const props = defineProps({
   src: {
@@ -46,7 +46,7 @@ function onLoad() {
 .ui-image__img {
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;  /* ← 改成 cover */
   opacity: 0;
   transition: opacity 0.5s ease;
 }
