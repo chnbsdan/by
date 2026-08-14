@@ -1352,7 +1352,7 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
   align-items: center;
   justify-content: center;
   z-index: 1;
-  background: rgba(0,0,0,0.1);
+  background: transparent;
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
   border-radius: 16px;
