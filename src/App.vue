@@ -72,11 +72,16 @@
     <!-- ★★★ 预览 - 使用 ui-dialog + ui-image ★★★ -->
     <ui-dialog :visible="previewVisible" @close="closePreview">
       <div class="relative grid h-screen w-screen place-items-center of-hidden text-white">
+        <!-- 箭头 - 在图片上层 -->
         <button class="arrow arrow-left" @click.stop="prevPreview"><i class="fas fa-chevron-left"></i></button>
         <button class="arrow arrow-right" @click.stop="nextPreview"><i class="fas fa-chevron-right"></i></button>
 
-        <ui-image :src="previewUrl" :alt="previewItem?.title || ''" />
+        <!-- 图片 - 占满全屏 -->
+        <div class="preview-image-wrapper" @click="toggleToolbar">
+          <ui-image :src="previewUrl" :alt="previewItem?.title || ''" />
+        </div>
 
+        <!-- 工具栏 -->
         <div class="toolbar" :class="{ hidden: !toolbarVisible }">
           <a href="/" class="btn"><i class="fas fa-home"></i> <span>首页</span></a>
           <div class="dropdown" ref="dropdownRef">
@@ -103,6 +108,7 @@
           <button class="btn" @click="closePreview"><i class="fas fa-times"></i></button>
         </div>
 
+        <!-- 信息面板 -->
         <div class="info-panel" :class="{ hidden: !toolbarVisible }">
           <div class="copyright">{{ previewItem?.copyright }}</div>
           <div class="date">{{ previewItem?.startdate || previewItem?.date }}</div>
@@ -655,6 +661,7 @@ function prevPreview() {
   if (previewIndex.value > 0) {
     previewIndex.value--
     updatePreview()
+    // ★★★ 切换时不改变 toolbarVisible，保持当前状态 ★★★
   }
 }
 
@@ -662,6 +669,7 @@ function nextPreview() {
   if (previewIndex.value < allData.value.length - 1) {
     previewIndex.value++
     updatePreview()
+    // ★★★ 切换时不改变 toolbarVisible，保持当前状态 ★★★
   }
 }
 
@@ -1236,6 +1244,20 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 }
 .back-to-top { display: flex; }
 
+/* ===== ★★★ 预览图片占满全屏 ★★★ ===== */
+.preview-image-wrapper {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  cursor: pointer;
+}
+.preview-image-wrapper :deep(.ui-image__img) {
+  object-fit: cover !important;
+}
+
 /* ===== ★★★ 箭头 ★★★ ===== */
 .arrow { 
   position: fixed; 
@@ -1251,7 +1273,7 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
   cursor: pointer; 
   transition: all 0.25s ease; 
   border-radius: 12px; 
-  z-index: 10; 
+  z-index: 10 !important;
   -webkit-tap-highlight-color: transparent !important; 
   outline: none !important; 
   box-shadow: 0 4px 20px rgba(0,0,0,0.3); 
