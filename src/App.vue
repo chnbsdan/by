@@ -1337,6 +1337,7 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 .back-to-top { display: flex; }
 
 /* ===== ★★★ 预览 ★★★ ===== */
+
 .preview-overlay { 
   display: none; 
   position: fixed; 
@@ -1361,7 +1362,7 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
   filter: blur(30px) brightness(0.75);
   z-index: 0; 
   transform: scale(1.05); 
-  transition: background-image 0.5s ease;
+  transition: none;
 }
 
 .preview-container {
@@ -1385,8 +1386,8 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
   cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
-  opacity: 0;
-  transition: opacity 0.5s ease;
+  opacity: 1;
+  transition: none;
 }
 .preview-image.loaded {
   opacity: 1;
