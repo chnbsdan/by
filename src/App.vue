@@ -1344,38 +1344,31 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
   position: fixed; 
   top: 0; left: 0; right: 0; bottom: 0; 
   z-index: 2000; 
-  background: rgba(0,0,0,0.4);
+  background: rgba(0,0,0,0.1);
   justify-content: center; 
   align-items: center; 
   cursor: default; 
   -webkit-tap-highlight-color: transparent; 
 }
-
+.preview-overlay.active { display: flex; }
 
 .preview-overlay::before { 
-  content: ''; 
-  position: fixed; 
-  top: -20px; 
-  left: -20px; 
-  right: -20px; 
-  bottom: -20px; 
-  background: center/cover no-repeat;
-  filter: blur(30px) brightness(0.75);
-  z-index: 0; 
-  transform: scale(1.05); 
-  transition: none;
+  display: none;
 }
 
 .preview-container {
   position: relative;
-  width: 100%;
-  height: 100%;
+  width: 92vw;
+  height: 85vh;
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1;
-  transform: none;
-  opacity: 1;
+  background: rgba(0,0,0,0.15);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-radius: 16px;
+  overflow: hidden;
 }
 
 .preview-image {
