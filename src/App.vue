@@ -1272,7 +1272,7 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
   position: fixed; 
   top: 0; left: 0; right: 0; bottom: 0; 
   z-index: 2000; 
-  background: transparent;
+  background: rgba(0, 0, 0, 0.03);
   justify-content: center; 
   align-items: center; 
   cursor: default; 
