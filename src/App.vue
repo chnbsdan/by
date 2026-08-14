@@ -77,9 +77,13 @@
         <button class="arrow arrow-right" @click.stop="nextPreview"><i class="fas fa-chevron-right"></i></button>
 
         <!-- 图片 - 占满全屏 -->
-        <div class="preview-image-wrapper" @click="toggleToolbar">
-          <ui-image :src="previewUrl" :alt="previewItem?.title || ''" />
-        </div>
+<div class="preview-image-wrapper" @click="toggleToolbar">
+  <ui-image 
+    :src="previewUrl" 
+    :alt="previewItem?.title || ''" 
+    :is-history="isHistoryData(previewItem)" 
+  />
+</div>
 
         <!-- 工具栏 -->
         <div class="toolbar" :class="{ hidden: !toolbarVisible }">

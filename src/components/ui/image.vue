@@ -26,13 +26,33 @@ const props = defineProps({
   alt: {
     type: String,
     default: ''
+  },
+  // ★★★ 新增：是否是历史数据 ★★★
+  isHistory: {
+    type: Boolean,
+    default: false
   }
 })
 
 const loading = ref(true)
+const imgRef = ref(null)
 
+// ★★★ 图片加载完成后检测主体 ★★★
 function onLoad() {
   loading.value = false
+  
+  // 如果是历史数据，检测主体
+  if (props.isHistory && imgRef.value) {
+    // 从 window 获取 detectSalientRegion 函数
+    const detect = window.detectSalientRegion
+    if (detect) {
+      detect(imgRef.value).then(pos => {
+        if (pos && pos.x && pos.y) {
+          imgRef.value.style.objectPosition = pos.x + '% ' + pos.y + '%'
+        }
+      }).catch(() => {})
+    }
+  }
 }
 </script>
 
