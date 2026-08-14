@@ -69,68 +69,47 @@
 
     <button v-show="showBackToTop" class="back-to-top" @click="scrollToTop"><i class="fas fa-arrow-up"></i></button>
 
-    <!-- ★★★ 预览 - 完全透明背景，无加载动画 ★★★ -->
-    <div v-if="previewVisible" class="preview-overlay active" @click.self="closePreview">
-      <button class="arrow arrow-left" @click.stop="prevPreview"><i class="fas fa-chevron-left"></i></button>
-      <button class="arrow arrow-right" @click.stop="nextPreview"><i class="fas fa-chevron-right"></i></button>
+    <!-- ★★★ 预览 - 使用 ui-dialog + ui-image ★★★ -->
+    <ui-dialog :visible="previewVisible" @close="closePreview">
+      <div class="relative grid h-screen w-screen place-items-center of-hidden text-white">
+        <button class="arrow arrow-left" @click.stop="prevPreview"><i class="fas fa-chevron-left"></i></button>
+        <button class="arrow arrow-right" @click.stop="nextPreview"><i class="fas fa-chevron-right"></i></button>
 
-      <div class="preview-container">
-        <img 
-          ref="previewImg" 
-          class="preview-image" 
-          :class="{ loaded: imageLoaded }"
-          :src="previewUrl" 
-          alt="预览" 
-          crossorigin="anonymous" 
-          @load="onPreviewLoad" 
-          @click="toggleToolbar"
-          @wheel="onWheelZoom"
-          @mousedown="startDrag"
-          @touchstart="startDrag"
-          @mousemove="moveDrag"
-          @touchmove="moveDrag"
-          @mouseup="endDrag"
-          @touchend="endDrag"
-          :style="{
-            transform: 'translate(' + translateX + 'px, ' + translateY + 'px) scale(' + scale + ')',
-            cursor: scale > 1 ? 'grab' : 'default',
-            transition: 'none'
-          }"
-        />
-      </div>
+        <ui-image :src="previewUrl" :alt="previewItem?.title || ''" />
 
-      <div class="toolbar" :class="{ hidden: !toolbarVisible }">
-        <a href="/" class="btn"><i class="fas fa-home"></i> <span>首页</span></a>
-        <div class="dropdown" ref="dropdownRef">
-          <button class="btn" @click.stop="toggleDropdown"><i class="fas fa-download"></i> <span>下载</span> <i class="fas fa-chevron-down"></i></button>
-          <div class="dropdown-menu" :class="{ show: dropdownOpen }">
-            <a href="#" @click.prevent="downloadImage('4k')"><i class="fas fa-star"></i> 4K (UHD原图)</a>
-            <a href="#" @click.prevent="downloadImage('fhd')"><i class="fas fa-desktop"></i> 全高清 (1920×1080)</a>
-            <a href="#" @click.prevent="downloadImage('hd')"><i class="fas fa-laptop"></i> 高清 (1366×768)</a>
-            <div class="divider"></div>
-            <a href="#" @click.prevent="downloadImage('mobile')"><i class="fas fa-mobile-alt"></i> 手机 (1080×1920)</a>
-            <a href="#" @click.prevent="downloadImage('mobile_s')"><i class="fas fa-mobile"></i> 手机 (768×1280)</a>
-          </div>
-        </div>
-        <div class="donate-qr-wrapper">
-          <button class="btn"><i class="fas fa-mug-hot"></i><span>打赏</span></button>
-          <div class="qr-tooltip">
-            <div class="qr-row">
-              <div class="qr-item"><img src="https://img.hangdn.com/hd/wechat.png" alt="微信支付" /><span class="qr-label wechat"><i class="fab fa-weixin"></i> 微信支付</span></div>
-              <div class="qr-item"><img src="https://img.hangdn.com/hd/alipay.png" alt="支付宝" /><span class="qr-label alipay"><i class="fab fa-alipay"></i> 支付宝</span></div>
+        <div class="toolbar" :class="{ hidden: !toolbarVisible }">
+          <a href="/" class="btn"><i class="fas fa-home"></i> <span>首页</span></a>
+          <div class="dropdown" ref="dropdownRef">
+            <button class="btn" @click.stop="toggleDropdown"><i class="fas fa-download"></i> <span>下载</span> <i class="fas fa-chevron-down"></i></button>
+            <div class="dropdown-menu" :class="{ show: dropdownOpen }">
+              <a href="#" @click.prevent="downloadImage('4k')"><i class="fas fa-star"></i> 4K (UHD原图)</a>
+              <a href="#" @click.prevent="downloadImage('fhd')"><i class="fas fa-desktop"></i> 全高清 (1920×1080)</a>
+              <a href="#" @click.prevent="downloadImage('hd')"><i class="fas fa-laptop"></i> 高清 (1366×768)</a>
+              <div class="divider"></div>
+              <a href="#" @click.prevent="downloadImage('mobile')"><i class="fas fa-mobile-alt"></i> 手机 (1080×1920)</a>
+              <a href="#" @click.prevent="downloadImage('mobile_s')"><i class="fas fa-mobile"></i> 手机 (768×1280)</a>
             </div>
-            <div class="qr-footer"><i class="fas fa-mug-hot"></i> 您的支持是我持续更新的动力</div>
           </div>
+          <div class="donate-qr-wrapper">
+            <button class="btn"><i class="fas fa-mug-hot"></i><span>打赏</span></button>
+            <div class="qr-tooltip">
+              <div class="qr-row">
+                <div class="qr-item"><img src="https://img.hangdn.com/hd/wechat.png" alt="微信支付" /><span class="qr-label wechat"><i class="fab fa-weixin"></i> 微信支付</span></div>
+                <div class="qr-item"><img src="https://img.hangdn.com/hd/alipay.png" alt="支付宝" /><span class="qr-label alipay"><i class="fab fa-alipay"></i> 支付宝</span></div>
+              </div>
+              <div class="qr-footer"><i class="fas fa-mug-hot"></i> 您的支持是我持续更新的动力</div>
+            </div>
+          </div>
+          <button class="btn" @click="closePreview"><i class="fas fa-times"></i></button>
         </div>
-        <button class="btn" @click="closePreview"><i class="fas fa-times"></i></button>
-      </div>
 
-      <div class="info-panel" :class="{ hidden: !toolbarVisible }">
-        <div class="copyright">{{ previewItem?.copyright }}</div>
-        <div class="date">{{ previewItem?.startdate || previewItem?.date }}</div>
-        <div class="desc">{{ previewItem?.title }}</div>
+        <div class="info-panel" :class="{ hidden: !toolbarVisible }">
+          <div class="copyright">{{ previewItem?.copyright }}</div>
+          <div class="date">{{ previewItem?.startdate || previewItem?.date }}</div>
+          <div class="desc">{{ previewItem?.title }}</div>
+        </div>
       </div>
-    </div>
+    </ui-dialog>
 
     <!-- ★★★ 评论弹窗 ★★★ -->
     <div v-if="commentVisible" class="comment-overlay active" @click.self="closeComment">
@@ -153,6 +132,8 @@
 
 <script setup>
 import { ref, onMounted, onBeforeUnmount } from 'vue'
+import UiDialog from '~/components/ui/dialog.vue'
+import UiImage from '~/components/ui/image.vue'
 
 // ============================================================
 // 状态
@@ -169,7 +150,6 @@ const searchKeyword = ref('')
 const theme = ref('dark')
 const navOpen = ref(false)
 const gridRef = ref(null)
-const previewImg = ref(null)
 const showBackToTop = ref(false)
 
 // 预览
@@ -180,9 +160,8 @@ const previewUrl = ref('')
 const toolbarVisible = ref(true)
 const dropdownOpen = ref(false)
 const dropdownRef = ref(null)
-const imageLoaded = ref(false)
 
-// 缩放状态
+// 缩放状态（暂时保留，后续可移除）
 const scale = ref(1)
 const translateX = ref(0)
 const translateY = ref(0)
@@ -634,7 +613,7 @@ function scrollToTop() {
 }
 
 // ============================================================
-// 预览 - ★★★ 透明背景，无加载动画 ★★★
+// 预览
 // ============================================================
 function openPreview(item) {
   const idx = allData.value.findIndex(d =>
@@ -643,7 +622,6 @@ function openPreview(item) {
   previewIndex.value = idx >= 0 ? idx : allData.value.indexOf(item)
   previewItem.value = allData.value[previewIndex.value]
   
-  imageLoaded.value = false
   scale.value = 1
   translateX.value = 0
   translateY.value = 0
@@ -669,7 +647,6 @@ function openPreview(item) {
 function closePreview() {
   previewVisible.value = false
   toolbarVisible.value = true
-  imageLoaded.value = false
   document.body.style.overflow = 'auto'
   document.title = '必应壁纸 | 每日一图，带你领略世界之美'
 }
@@ -689,7 +666,6 @@ function nextPreview() {
 }
 
 function updatePreview() {
-  imageLoaded.value = false
   scale.value = 1
   translateX.value = 0
   translateY.value = 0
@@ -723,13 +699,6 @@ function updateTitle(item) {
   }
 }
 
-// ★★★ 图片加载完成后淡入显示，不移动位置 ★★★
-function onPreviewLoad() {
-  imageLoaded.value = true
-  // 不设置 objectPosition，保持默认居中
-  // 不移动图片
-}
-
 function toggleToolbar() {
   toolbarVisible.value = !toolbarVisible.value
 }
@@ -745,6 +714,7 @@ function handleClickOutside(e) {
   }
 }
 
+// 滚轮缩放（保留，后续可移除）
 function onWheelZoom(e) {
   e.preventDefault()
   const delta = e.deltaY > 0 ? -0.1 : 0.1
@@ -1266,55 +1236,7 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 }
 .back-to-top { display: flex; }
 
-/* ===== ★★★ 预览 - 完全透明背景，无加载动画 ★★★ ===== */
-.preview-overlay { 
-  display: none; 
-  position: fixed; 
-  top: 0; left: 0; right: 0; bottom: 0; 
-  z-index: 2000; 
-  background: rgba(0, 0, 0, 0.03);
-  justify-content: center; 
-  align-items: center; 
-  cursor: default; 
-  -webkit-tap-highlight-color: transparent; 
-}
-.preview-overlay.active { display: flex; }
-
-.preview-container {
-  position: relative;
-  width: 92vw;
-  height: 85vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1;
-  background: transparent;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  border-radius: 16px;
-  overflow: hidden;
-  box-shadow: none;
-}
-
-.preview-image {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  border-radius: 0;
-  box-shadow: none;
-  background: transparent;
-  pointer-events: auto;
-  cursor: pointer;
-  user-select: none;
-  -webkit-user-select: none;
-  opacity: 0;
-  transition: opacity 0.5s ease;
-}
-.preview-image.loaded {
-  opacity: 1;
-}
-
-/* ===== 箭头 ===== */
+/* ===== ★★★ 箭头 ★★★ ===== */
 .arrow { 
   position: fixed; 
   top: 50%; 
