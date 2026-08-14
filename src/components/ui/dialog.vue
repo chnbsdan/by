@@ -50,9 +50,11 @@ function handleOverlayClick() {
   opacity: 1;
 }
 .dialog-content {
-  width: 92vw;
-  height: 85vh;
-  position: relative;
+  width: 100vw;
+  height: 100vh;
+  position: fixed;
+  top: 0;
+  left: 0;
   display: flex;
   align-items: center;
   justify-content: center;
