@@ -69,16 +69,12 @@
 
     <button v-show="showBackToTop" class="back-to-top" @click="scrollToTop"><i class="fas fa-arrow-up"></i></button>
 
-    <!-- ★★★ 预览 ★★★ -->
+    <!-- ★★★ 预览 - 完全透明背景，无加载动画 ★★★ -->
     <div v-if="previewVisible" class="preview-overlay active" @click.self="closePreview">
       <button class="arrow arrow-left" @click.stop="prevPreview"><i class="fas fa-chevron-left"></i></button>
       <button class="arrow arrow-right" @click.stop="nextPreview"><i class="fas fa-chevron-right"></i></button>
 
       <div class="preview-container">
-        <div class="preview-loading" v-if="!imageLoaded">
-          <div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i></div>
-          <div class="loading-text">加载中...</div>
-        </div>
         <img 
           ref="previewImg" 
           class="preview-image" 
@@ -478,14 +474,12 @@ function getImageUrl(item, resolution) {
       'mobile_s': '_768x1280.jpg'
     }
     const suffix = resMap[resolution] || '_1920x1080.jpg'
-    // 如果 urlbase 已经包含完整域名
     if (item.urlbase.startsWith('http')) {
       return item.urlbase.replace(/_[^_]+\.jpg$/, suffix)
     }
     return 'https://www.bing.com' + item.urlbase + suffix
   }
   
-  // 其他情况
   if (item.urlbase && item.urlbase.startsWith('http')) return item.urlbase
   return item.urlbase || ''
 }
@@ -493,12 +487,10 @@ function getImageUrl(item, resolution) {
 function getThumbUrl(item) {
   if (!item) return ''
   
-  // 本地历史数据：返回原图（缩略图直接用原图）
   if (isHistoryData(item)) {
     return item.thumb || item.urlbase || ''
   }
   
-  // 必应数据：返回缩略图
   if (isBingData(item)) {
     if (item.urlbase.startsWith('http')) {
       return item.urlbase.replace(/_[^_]+\.jpg$/, '_400x240.jpg')
@@ -642,7 +634,7 @@ function scrollToTop() {
 }
 
 // ============================================================
-// 预览
+// 预览 - ★★★ 透明背景，无加载动画 ★★★
 // ============================================================
 function openPreview(item) {
   const idx = allData.value.findIndex(d =>
@@ -658,12 +650,9 @@ function openPreview(item) {
   
   const isMobile = window.innerWidth < 768
   
-  // 判断数据类型
   if (isHistoryData(previewItem.value)) {
-    // 历史数据：显示原图
     previewUrl.value = previewItem.value.urlbase || previewItem.value.thumb || ''
   } else if (isBingData(previewItem.value)) {
-    // 必应数据：根据设备选择分辨率
     const resolution = isMobile ? 'mobile_s' : 'fhd'
     previewUrl.value = getImageUrl(previewItem.value, resolution)
   } else {
@@ -734,24 +723,11 @@ function updateTitle(item) {
   }
 }
 
-// ★★★ 预览加载后检测显著性（历史数据用） ★★★
+// ★★★ 图片加载完成后淡入显示，不移动位置 ★★★
 function onPreviewLoad() {
   imageLoaded.value = true
-  const img = previewImg.value
-  if (!img) return
-  
-  // 只有历史数据才做显著性检测
-  if (isHistoryData(previewItem.value)) {
-    detectSalientRegion(img).then(pos => {
-      if (pos && pos.x && pos.y) {
-        img.style.objectPosition = pos.x + '% ' + pos.y + '%'
-      }
-    }).catch(() => {
-      img.style.objectPosition = '50% 50%'
-    })
-  } else {
-    img.style.objectPosition = '50% 50%'
-  }
+  // 不设置 objectPosition，保持默认居中
+  // 不移动图片
 }
 
 function toggleToolbar() {
@@ -799,7 +775,7 @@ function endDrag() {
 }
 
 // ============================================================
-// 下载 - ★★★ 区分处理 ★★★
+// 下载
 // ============================================================
 function getDownloadFileName(item, resolution) {
   const urlbase = item.urlbase || ''
@@ -939,11 +915,9 @@ function downloadImage(resolution) {
 
   dropdownOpen.value = false
 
-  // ★★★ 判断是否是本地历史数据 ★★★
   const isHistory = isHistoryData(item)
 
   if (isHistory && (resolution === 'mobile' || resolution === 'mobile_s')) {
-    // 历史数据 + 手机尺寸 → 前端裁剪
     fetch(url)
       .then(res => {
         if (!res.ok) throw new Error('下载失败')
@@ -967,7 +941,6 @@ function downloadImage(resolution) {
         window.open(url, '_blank')
       })
   } else {
-    // 必应数据 或 非手机尺寸 → 直接下载
     fetch(url)
       .then(res => {
         if (!res.ok) throw new Error('下载失败')
@@ -1166,7 +1139,7 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 .loading-state .loading-text { font-size: 16px; color: var(--text-muted); }
 @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-/* ===== ★★★ 卡片 - 移动端 3:5，桌面端 16:9 ★★★ ===== */
+/* ===== ★★★ 卡片 ★★★ ===== */
 .card { 
   position: relative; 
   overflow: hidden; 
@@ -1293,8 +1266,7 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 }
 .back-to-top { display: flex; }
 
-/* ===== ★★★ 预览 ★★★ ===== */
-
+/* ===== ★★★ 预览 - 完全透明背景，无加载动画 ★★★ ===== */
 .preview-overlay { 
   display: none; 
   position: fixed; 
@@ -1307,10 +1279,6 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
   -webkit-tap-highlight-color: transparent; 
 }
 .preview-overlay.active { display: flex; }
-
-.preview-overlay::before { 
-  display: none;
-}
 
 .preview-container {
   position: relative;
@@ -1339,38 +1307,11 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
   cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
-  opacity: 1;
-  transition: none;
+  opacity: 0;
+  transition: opacity 0.5s ease;
 }
 .preview-image.loaded {
   opacity: 1;
-}
-
-.preview-loading {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  text-align: center;
-  color: rgba(255,255,255,0.6);
-  z-index: 2;
-  pointer-events: none;
-}
-.preview-loading .loading-spinner {
-  font-size: 40px;
-  margin-bottom: 12px;
-  color: rgba(255,255,255,0.4);
-}
-.preview-loading .loading-text {
-  font-size: 14px;
-}
-
-@media (max-width: 768px) {
-  .preview-container {
-    width: 96vw;
-    height: 80vh;
-    border-radius: 12px;
-  }
 }
 
 /* ===== 箭头 ===== */
