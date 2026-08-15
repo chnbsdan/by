@@ -220,31 +220,77 @@ function doEnhancedDetect(img) {
     const r = new Float32Array(size * size)
     const g = new Float32Array(size * size)
     const b = new Float32Array(size * size)
+    const hsv = new Float32Array(size * size * 3)
     
     for (let i = 0; i < size * size; i++) {
       const idx = i * 4
-      r[i] = data[idx]
-      g[i] = data[idx + 1]
-      b[i] = data[idx + 2]
-      gray[i] = 0.299 * r[i] + 0.587 * g[i] + 0.114 * b[i]
+      const ri = data[idx]
+      const gi = data[idx + 1]
+      const bi = data[idx + 2]
+      r[i] = ri
+      g[i] = gi
+      b[i] = bi
+      gray[i] = 0.299 * ri + 0.587 * gi + 0.114 * bi
+      
+      const max = Math.max(ri, gi, bi)
+      const min = Math.min(ri, gi, bi)
+      const diff = max - min
+      hsv[i * 3 + 2] = max / 255
+      if (max === 0) {
+        hsv[i * 3 + 0] = 0
+        hsv[i * 3 + 1] = 0
+      } else {
+        hsv[i * 3 + 1] = diff / max
+        let h = 0
+        if (diff === 0) h = 0
+        else if (max === ri) h = ((gi - bi) / diff) % 6
+        else if (max === gi) h = (bi - ri) / diff + 2
+        else h = (ri - gi) / diff + 4
+        hsv[i * 3 + 0] = ((h * 60) % 360) / 360
+      }
     }
     
-    const graySaliency = computeGraySaliency(gray, size)
-    const colorSaliency = computeColorSaliency(r, g, b, size)
-    const edgeSaliency = computeEdgeSaliency(gray, size)
+    // ★★★ 10种检测策略融合 ★★★
+    const saliencies = []
+    saliencies.push({ data: computeGraySaliency(gray, size), weight: 0.12 })
+    saliencies.push({ data: computeColorSaliency(r, g, b, size), weight: 0.10 })
+    saliencies.push({ data: computeEdgeSaliency(gray, size), weight: 0.12 })
+    saliencies.push({ data: computeTextureSaliency(gray, size), weight: 0.12 })
+    saliencies.push({ data: computeColorChangeSaliency(r, g, b, size), weight: 0.08 })
+    saliencies.push({ data: computeHSVSaturationSaliency(hsv, size), weight: 0.08 })
+    saliencies.push({ data: computeHSVHueSaliency(hsv, size), weight: 0.06 })
+    saliencies.push({ data: computeLocalContrastSaliency(gray, size), weight: 0.10 })
+    saliencies.push({ data: computeFrequencySaliency(gray, size), weight: 0.08 })
+    saliencies.push({ data: computeMultiScaleSaliency(gray, size), weight: 0.14 })
     
     const combined = new Float32Array(size * size)
     for (let i = 0; i < size * size; i++) {
-      combined[i] = graySaliency[i] * 0.4 + colorSaliency[i] * 0.3 + edgeSaliency[i] * 0.3
+      let sum = 0
+      for (const s of saliencies) {
+        sum += s.data[i] * s.weight
+      }
+      combined[i] = sum
+    }
+    
+    let maxVal = 0
+    for (let i = 0; i < size * size; i++) {
+      if (combined[i] > maxVal) maxVal = combined[i]
+    }
+    if (maxVal > 0) {
+      for (let i = 0; i < size * size; i++) {
+        combined[i] /= maxVal
+      }
     }
     
     return findBestRegion(combined, size, width, height)
     
   } catch (e) {
-    console.warn('算法检测失败:', e)
+    console.warn('检测失败:', e)
     return { x: 50, y: 45 }
   }
 }
+
+// ===== 10种检测策略 =====
 
 function computeGraySaliency(gray, size) {
   const result = new Float32Array(size * size)
@@ -358,6 +404,223 @@ function computeEdgeSaliency(gray, size) {
   return dilated
 }
 
+function computeTextureSaliency(gray, size) {
+  const result = new Float32Array(size * size)
+  const windowSize = 6
+  
+  const variance = new Float32Array(size * size)
+  for (let y = windowSize; y < size - windowSize; y += 1) {
+    for (let x = windowSize; x < size - windowSize; x += 1) {
+      let sum = 0, sumSq = 0, count = 0
+      for (let dy = -windowSize; dy <= windowSize; dy += 1) {
+        for (let dx = -windowSize; dx <= windowSize; dx += 1) {
+          const val = gray[(y + dy) * size + (x + dx)]
+          sum += val
+          sumSq += val * val
+          count++
+        }
+      }
+      const mean = sum / count
+      const varVal = sumSq / count - mean * mean
+      variance[y * size + x] = Math.sqrt(Math.max(0, varVal))
+    }
+  }
+  
+  for (let y = windowSize; y < size - windowSize; y += 1) {
+    for (let x = windowSize; x < size - windowSize; x += 1) {
+      const center = variance[y * size + x]
+      let sum = 0, count = 0
+      for (let dy = -windowSize; dy <= windowSize; dy += 2) {
+        for (let dx = -windowSize; dx <= windowSize; dx += 2) {
+          if (dx === 0 && dy === 0) continue
+          sum += variance[(y + dy) * size + (x + dx)]
+          count++
+        }
+      }
+      const mean = sum / count
+      result[y * size + x] = Math.min(1, Math.abs(center - mean) / 255 * 2)
+    }
+  }
+  
+  return gaussianBlur(result, size, 4)
+}
+
+function computeColorChangeSaliency(r, g, b, size) {
+  const result = new Float32Array(size * size)
+  const radius = 3
+  
+  for (let y = radius; y < size - radius; y += 1) {
+    for (let x = radius; x < size - radius; x += 1) {
+      const idx = y * size + x
+      
+      let sumR = 0, sumG = 0, sumB = 0, count = 0
+      for (let dy = -radius; dy <= radius; dy += 1) {
+        for (let dx = -radius; dx <= radius; dx += 1) {
+          if (dx === 0 && dy === 0) continue
+          const ni = (y + dy) * size + (x + dx)
+          sumR += r[ni]
+          sumG += g[ni]
+          sumB += b[ni]
+          count++
+        }
+      }
+      
+      const meanR = sumR / count
+      const meanG = sumG / count
+      const meanB = sumB / count
+      
+      const diff = Math.sqrt(
+        Math.pow(r[idx] - meanR, 2) +
+        Math.pow(g[idx] - meanG, 2) +
+        Math.pow(b[idx] - meanB, 2)
+      )
+      
+      result[idx] = Math.min(1, diff / 255 * 1.5)
+    }
+  }
+  
+  return gaussianBlur(result, size, 3)
+}
+
+function computeHSVSaturationSaliency(hsv, size) {
+  const result = new Float32Array(size * size)
+  const half = 12
+  const step = 2
+  
+  for (let y = half; y < size - half; y += step) {
+    for (let x = half; x < size - half; x += step) {
+      const idx = y * size + x
+      const center = hsv[idx * 3 + 1]
+      
+      let sum = 0, count = 0
+      for (let dy = -half; dy <= half; dy += 2) {
+        for (let dx = -half; dx <= half; dx += 2) {
+          if (dx === 0 && dy === 0) continue
+          const ni = (y + dy) * size + (x + dx)
+          sum += hsv[ni * 3 + 1]
+          count++
+        }
+      }
+      const mean = sum / count
+      result[idx] = Math.abs(center - mean) * (1 + center * 0.5)
+    }
+  }
+  return gaussianBlur(result, size, 5)
+}
+
+function computeHSVHueSaliency(hsv, size) {
+  const result = new Float32Array(size * size)
+  const half = 10
+  const step = 2
+  
+  for (let y = half; y < size - half; y += step) {
+    for (let x = half; x < size - half; x += step) {
+      const idx = y * size + x
+      const center = hsv[idx * 3 + 0]
+      
+      let sum = 0, count = 0
+      for (let dy = -half; dy <= half; dy += 2) {
+        for (let dx = -half; dx <= half; dx += 2) {
+          if (dx === 0 && dy === 0) continue
+          const ni = (y + dy) * size + (x + dx)
+          let diff = hsv[ni * 3 + 0] - center
+          if (diff > 0.5) diff -= 1
+          if (diff < -0.5) diff += 1
+          sum += Math.abs(diff)
+          count++
+        }
+      }
+      result[idx] = sum / count
+    }
+  }
+  return gaussianBlur(result, size, 5)
+}
+
+function computeLocalContrastSaliency(gray, size) {
+  const result = new Float32Array(size * size)
+  const radius = 8
+  
+  for (let y = radius; y < size - radius; y += 2) {
+    for (let x = radius; x < size - radius; x += 2) {
+      const idx = y * size + x
+      let minVal = 255, maxVal = 0
+      for (let dy = -radius; dy <= radius; dy += 2) {
+        for (let dx = -radius; dx <= radius; dx += 2) {
+          const val = gray[(y + dy) * size + (x + dx)]
+          if (val < minVal) minVal = val
+          if (val > maxVal) maxVal = val
+        }
+      }
+      result[idx] = (maxVal - minVal) / 255
+    }
+  }
+  return gaussianBlur(result, size, 4)
+}
+
+function computeFrequencySaliency(gray, size) {
+  const result = new Float32Array(size * size)
+  const radius = 3
+  
+  const laplacian = new Float32Array(size * size)
+  for (let y = 1; y < size - 1; y++) {
+    for (let x = 1; x < size - 1; x++) {
+      const idx = y * size + x
+      laplacian[idx] = Math.abs(
+        4 * gray[idx] -
+        gray[(y-1) * size + x] -
+        gray[(y+1) * size + x] -
+        gray[y * size + (x-1)] -
+        gray[y * size + (x+1)]
+      ) / 255
+    }
+  }
+  
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      let sum = 0, count = 0
+      for (let dy = -radius; dy <= radius; dy++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+          const px = x + dx, py = y + dy
+          if (px < 0 || px >= size || py < 0 || py >= size) continue
+          sum += laplacian[py * size + px]
+          count++
+        }
+      }
+      result[y * size + x] = sum / count
+    }
+  }
+  return result
+}
+
+function computeMultiScaleSaliency(gray, size) {
+  const result = new Float32Array(size * size)
+  const scales = [4, 8, 12, 16]
+  
+  for (const scale of scales) {
+    const temp = new Float32Array(size * size)
+    const half = scale
+    for (let y = half; y < size - half; y += 2) {
+      for (let x = half; x < size - half; x += 2) {
+        const idx = y * size + x
+        let sum = 0, count = 0
+        for (let dy = -half; dy <= half; dy += 2) {
+          for (let dx = -half; dx <= half; dx += 2) {
+            sum += gray[(y + dy) * size + (x + dx)]
+            count++
+          }
+        }
+        const mean = sum / count
+        temp[idx] = Math.abs(gray[idx] - mean) / 255
+      }
+    }
+    const blurred = gaussianBlur(temp, size, 3)
+    for (let i = 0; i < size * size; i++) {
+      result[i] += blurred[i] / scales.length
+    }
+  }
+  return result
+}
+
 function gaussianBlur(data, size, radius) {
   const result = new Float32Array(data.length)
   const sigma = radius / 2
@@ -388,26 +651,33 @@ function findBestRegion(saliency, size, origWidth, origHeight) {
   let bestX = size / 2
   let bestY = size / 2
 
-  // 多尺度、分层检测策略
-  // 小尺度（鸟类等小物体）权重最高
   const scales = [
-    { size: 16, weight: 3.0 },   // 极小（鸟类）
-    { size: 24, weight: 2.2 },   // 小（小型动物）
-    { size: 34, weight: 1.2 },   // 中（中型物体）
-    { size: 44, weight: 0.6 },   // 大（大型物体，降权）
-    { size: 56, weight: 0.3 }    // 超大（背景，最低权）
+    { size: 10, weight: 6.0 },
+    { size: 14, weight: 5.0 },
+    { size: 18, weight: 4.0 },
+    { size: 22, weight: 3.0 },
+    { size: 26, weight: 2.2 },
+    { size: 32, weight: 1.5 },
+    { size: 38, weight: 1.0 },
+    { size: 44, weight: 0.6 },
+    { size: 50, weight: 0.3 },
+    { size: 56, weight: 0.15 },
+    { size: 62, weight: 0.08 },
+    { size: 68, weight: 0.04 }
   ]
+
+  const step = 1
 
   for (const scale of scales) {
     const regionSize = scale.size
     const weight = scale.weight
     
-    for (let y = 0; y < size - regionSize; y += 2) {
-      for (let x = 0; x < size - regionSize; x += 2) {
+    for (let y = 0; y < size - regionSize; y += step) {
+      for (let x = 0; x < size - regionSize; x += step) {
         let score = 0
         let count = 0
-        for (let dy = 0; dy < regionSize; dy += 2) {
-          for (let dx = 0; dx < regionSize; dx += 2) {
+        for (let dy = 0; dy < regionSize; dy += step) {
+          for (let dx = 0; dx < regionSize; dx += step) {
             score += saliency[(y + dy) * size + (x + dx)]
             count++
           }
@@ -417,18 +687,15 @@ function findBestRegion(saliency, size, origWidth, origHeight) {
         const cx = x + regionSize / 2
         const cy = y + regionSize / 2
 
-        // 1. 图片中央区域加分
         const distFromCenter = Math.sqrt(
           Math.pow((cx / size) - 0.5, 2) +
           Math.pow((cy / size) - 0.5, 2)
         )
-        const centerBonus = 1 + (1 - distFromCenter) * 0.2
+        const centerBonus = 1 + (1 - distFromCenter) * 0.35
+        const upBonus = 1 + (1 - cy / size) * 0.4
+        const edgePenalty = 1 - Math.pow(Math.abs((cx / size) - 0.5) * 2, 4) * 0.2
 
-        // 2. 图片偏上区域加分（鸟类和主体通常在画面中上方）
-        const upBonus = 1 + (1 - cy / size) * 0.25
-
-        // 3. 最终得分
-        const finalScore = score * weight * centerBonus * upBonus
+        const finalScore = score * weight * centerBonus * upBonus * edgePenalty
         
         if (finalScore > maxScore) {
           maxScore = finalScore
@@ -439,20 +706,19 @@ function findBestRegion(saliency, size, origWidth, origHeight) {
     }
   }
   
-  if (maxScore < 0.001) {
-    return { x: 50, y: 45 }
+  if (maxScore < 0.0001) {
+    return { x: 50, y: 40 }
   }
   
-  // 适度上移，保留头部
-  const offsetY = Math.max(15, (bestY / size) * 100 - 4)
+  const offsetY = Math.max(8, (bestY / size) * 100 - 8)
   
   return {
-    x: Math.max(15, Math.min(85, (bestX / size) * 100)),
-    y: Math.max(15, Math.min(85, offsetY))
+    x: Math.max(8, Math.min(92, (bestX / size) * 100)),
+    y: Math.max(8, Math.min(92, offsetY))
   }
 }
 
-// ★★★ 获取主体位置（纯算法） ★★★
+// ★★★ 获取主体位置 ★★★
 async function getSubjectPosition(imageUrl, imgElement) {
   const position = await detectSalientRegion(imgElement)
   if (position) {
@@ -547,7 +813,6 @@ async function smartCropForPreview(url, resolution) {
         const imgH = img.height
         const targetRatio = targetW / targetH
 
-        // 获取主体位置
         const pos = await getSubjectPosition(url, img)
 
         let cropX, cropY, cropWidth, cropHeight
@@ -923,7 +1188,6 @@ async function smartCropWithSubject(blob, fileName, resolution) {
         const imgH = img.height
         const targetRatio = targetW / targetH
 
-        // 获取主体位置
         const pos = await getSubjectPosition(url, img)
 
         let cropX, cropY, cropWidth, cropHeight
