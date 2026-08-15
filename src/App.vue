@@ -77,13 +77,13 @@
         <button class="arrow arrow-right" @click.stop="nextPreview"><i class="fas fa-chevron-right"></i></button>
 
         <!-- 图片 - 占满全屏 -->
-        <div class="preview-image-wrapper" @click="toggleToolbar">
-          <ui-image 
-            :src="previewUrl" 
-            :alt="previewItem?.title || ''" 
-            :is-history="isHistoryData(previewItem)" 
-          />
-        </div>
+<div class="preview-image-wrapper" @click="toggleToolbar">
+  <ui-image 
+    :src="previewUrl" 
+    :alt="previewItem?.title || ''" 
+    :is-history="isHistoryData(previewItem)" 
+  />
+</div>
 
         <!-- 工具栏 -->
         <div class="toolbar" :class="{ hidden: !toolbarVisible }">
@@ -141,7 +141,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import UiDialog from './components/ui/dialog.vue'
 import UiImage from './components/ui/image.vue'
 
@@ -386,7 +386,7 @@ function findBestRegion(saliency, size, origWidth, origHeight) {
   let maxScore = 0
   let bestX = size / 2
   let bestY = size / 2
-  const regionSize = Math.min(60, Math.floor(size * 0.35))
+  const regionSize = Math.min(40, Math.floor(size * 0.2))
   
   for (let y = 0; y < size - regionSize; y += 2) {
     for (let x = 0; x < size - regionSize; x += 2) {
@@ -406,10 +406,7 @@ function findBestRegion(saliency, size, origWidth, origHeight) {
         Math.pow((cx / size) - 0.5, 2) +
         Math.pow((cy / size) - 0.5, 2)
       )
-      
-      // 上方区域权重更高（让裁剪区域偏上，保留头部）
-      const upWeight = 1 + (1 - cy / size) * 0.3
-      score *= (1 + (1 - distFromCenter) * 0.1) * upWeight
+      score *= (1 + (1 - distFromCenter) * 0.1)
       
       if (score > maxScore) {
         maxScore = score
@@ -423,12 +420,9 @@ function findBestRegion(saliency, size, origWidth, origHeight) {
     return { x: 50, y: 50 }
   }
   
-  // 额外向上偏移 8%，确保头部包含
-  const offsetY = Math.max(15, (bestY / size) * 100 - 8)
-  
   return {
     x: Math.max(15, Math.min(85, (bestX / size) * 100)),
-    y: Math.max(15, Math.min(85, offsetY))
+    y: Math.max(15, Math.min(85, (bestY / size) * 100))
   }
 }
 
@@ -436,20 +430,16 @@ function findBestRegion(saliency, size, origWidth, origHeight) {
 // 工具函数 - 判断数据类型
 // ============================================================
 
+// ★★★ 判断是否是历史数据（本地图片） ★★★
 function isHistoryData(item) {
   if (!item) return false
   if (item.isHistory) return true
-  const url = item.urlbase || item.url || item.thumb || ''
-  if (url.includes('/originals/')) return true
-  if (url.startsWith('http') && !url.includes('bing.com')) return true
-  if (url.startsWith('/originals/')) return true
-  const date = item.startdate || item.date || ''
-  if (date && date.startsWith('201')) {
-    if (!url.includes('th?id=')) return true
-  }
+  if (item.urlbase && item.urlbase.includes('/originals/')) return true
+  if (item.urlbase && item.urlbase.startsWith('http') && !item.urlbase.includes('bing.com')) return true
   return false
 }
 
+// ★★★ 判断是否是必应数据 ★★★
 function isBingData(item) {
   if (!item) return false
   if (!item.urlbase) return false
@@ -459,10 +449,12 @@ function isBingData(item) {
 function getImageUrl(item, resolution) {
   if (!item) return ''
   
+  // 本地历史数据：返回原图
   if (isHistoryData(item)) {
     return item.urlbase || item.thumb || ''
   }
   
+  // 必应数据：替换分辨率后缀
   if (isBingData(item)) {
     const resMap = {
       'thumb': '_400x240.jpg',
@@ -500,78 +492,6 @@ function getThumbUrl(item) {
   
   if (item.urlbase && item.urlbase.startsWith('http')) return item.urlbase
   return 'https://www.bing.com' + (item.urlbase || '') + '_400x240.jpg'
-}
-
-// ============================================================
-// ★★★ 智能裁剪 - 生成预览图（历史数据用） ★★★
-// ============================================================
-
-async function smartCropForPreview(url, resolution) {
-  return new Promise((resolve) => {
-    const img = new Image()
-    img.crossOrigin = 'anonymous'
-    img.onload = function() {
-      try {
-        const targetW = resolution === 'mobile_s' ? 768 : 1080
-        const targetH = resolution === 'mobile_s' ? 1280 : 1920
-        const imgW = img.width
-        const imgH = img.height
-        const targetRatio = targetW / targetH
-
-        detectSalientRegion(img).then(pos => {
-          let cropX, cropY, cropWidth, cropHeight
-
-          if (pos) {
-            const centerX = (pos.x / 100) * imgW
-            const centerY = (pos.y / 100) * imgH
-
-            // ★★★ 以图片边缘为边界，不缩小 ★★★
-            if (imgW / imgH > targetRatio) {
-              cropHeight = imgH
-              cropWidth = imgH * targetRatio
-              cropX = Math.max(0, Math.min(imgW - cropWidth, centerX - cropWidth * 0.5))
-              cropY = 0
-            } else {
-              cropWidth = imgW
-              cropHeight = imgW / targetRatio
-              cropX = 0
-              cropY = Math.max(0, Math.min(imgH - cropHeight, centerY - cropHeight * 0.5))
-            }
-
-            // ★★★ 不额外扩大，也不缩小 ★★★
-
-          } else {
-            if (imgW / imgH > targetRatio) {
-              cropHeight = imgH
-              cropWidth = imgH * targetRatio
-              cropX = (imgW - cropWidth) / 2
-              cropY = 0
-            } else {
-              cropWidth = imgW
-              cropHeight = imgW / targetRatio
-              cropX = 0
-              cropY = (imgH - cropHeight) / 2
-            }
-          }
-
-          const canvas = document.createElement('canvas')
-          const ctx = canvas.getContext('2d')
-          canvas.width = targetW
-          canvas.height = targetH
-          ctx.imageSmoothingEnabled = true
-          ctx.imageSmoothingQuality = 'high'
-          ctx.drawImage(img, cropX, cropY, cropWidth, cropHeight, 0, 0, targetW, targetH)
-          resolve(canvas.toDataURL('image/jpeg', 0.9))
-        }).catch(() => {
-          resolve(url)
-        })
-      } catch (e) {
-        resolve(url)
-      }
-    }
-    img.onerror = () => resolve(url)
-    img.src = url
-  })
 }
 
 // ============================================================
@@ -706,9 +626,9 @@ function scrollToTop() {
 }
 
 // ============================================================
-// 预览 - ★★★ 历史数据预览使用裁剪图 ★★★
+// 预览
 // ============================================================
-async function openPreview(item) {
+function openPreview(item) {
   const idx = allData.value.findIndex(d =>
     (d.startdate || d.date) === (item.startdate || item.date)
   )
@@ -722,15 +642,7 @@ async function openPreview(item) {
   const isMobile = window.innerWidth < 768
   
   if (isHistoryData(previewItem.value)) {
-    // ★★★ 历史数据：生成裁剪后的预览图 ★★★
-    const url = previewItem.value.urlbase || previewItem.value.thumb || ''
-    // 如果是手机尺寸，生成裁剪图；否则显示原图
-    if (isMobile) {
-      const croppedUrl = await smartCropForPreview(url, 'mobile_s')
-      previewUrl.value = croppedUrl
-    } else {
-      previewUrl.value = url
-    }
+    previewUrl.value = previewItem.value.urlbase || previewItem.value.thumb || ''
   } else if (isBingData(previewItem.value)) {
     const resolution = isMobile ? 'mobile_s' : 'fhd'
     previewUrl.value = getImageUrl(previewItem.value, resolution)
@@ -766,7 +678,7 @@ function nextPreview() {
   }
 }
 
-async function updatePreview() {
+function updatePreview() {
   scale.value = 1
   translateX.value = 0
   translateY.value = 0
@@ -775,13 +687,7 @@ async function updatePreview() {
   const isMobile = window.innerWidth < 768
   
   if (isHistoryData(previewItem.value)) {
-    const url = previewItem.value.urlbase || previewItem.value.thumb || ''
-    if (isMobile) {
-      const croppedUrl = await smartCropForPreview(url, 'mobile_s')
-      previewUrl.value = croppedUrl
-    } else {
-      previewUrl.value = url
-    }
+    previewUrl.value = previewItem.value.urlbase || previewItem.value.thumb || ''
   } else if (isBingData(previewItem.value)) {
     const resolution = isMobile ? 'mobile_s' : 'fhd'
     previewUrl.value = getImageUrl(previewItem.value, resolution)
@@ -821,6 +727,7 @@ function handleClickOutside(e) {
   }
 }
 
+// 滚轮缩放（保留，后续可移除）
 function onWheelZoom(e) {
   e.preventDefault()
   const delta = e.deltaY > 0 ? -0.1 : 0.1
@@ -851,7 +758,7 @@ function endDrag() {
 }
 
 // ============================================================
-// 下载
+// 下载 - ★★★ 历史数据手机壁纸智能裁剪 ★★★
 // ============================================================
 function getDownloadFileName(item, resolution) {
   const urlbase = item.urlbase || ''
@@ -901,26 +808,22 @@ async function smartCropWithSubject(blob, fileName, resolution, subjectPosition)
         const targetRatio = targetW / targetH
 
         let cropX, cropY, cropWidth, cropHeight
-
+        
         if (subjectPosition) {
           const centerX = (subjectPosition.x / 100) * imgW
           const centerY = (subjectPosition.y / 100) * imgH
-
-          // ★★★ 直接以图片边缘为边界，不缩小 ★★★
+          
           if (imgW / imgH > targetRatio) {
             cropHeight = imgH
             cropWidth = imgH * targetRatio
-            cropX = Math.max(0, Math.min(imgW - cropWidth, centerX - cropWidth * 0.5))
+            cropX = Math.max(0, Math.min(imgW - cropWidth, centerX - cropWidth / 2))
             cropY = 0
           } else {
             cropWidth = imgW
             cropHeight = imgW / targetRatio
             cropX = 0
-            cropY = Math.max(0, Math.min(imgH - cropHeight, centerY - cropHeight * 0.5))
+            cropY = Math.max(0, Math.min(imgH - cropHeight, centerY - cropHeight / 2))
           }
-
-          // ★★★ 不额外扩大，也不缩小 ★★★
-
         } else {
           if (imgW / imgH > targetRatio) {
             cropHeight = imgH
@@ -987,6 +890,7 @@ function downloadBlob(blob, fileName) {
   }
 }
 
+// ★★★ 下载核心函数 - 区分历史数据和必应数据 ★★★
 function downloadImage(resolution) {
   if (!previewItem.value) return
   const item = previewItem.value
@@ -995,8 +899,10 @@ function downloadImage(resolution) {
 
   dropdownOpen.value = false
 
+  // ★★★ 判断是否是历史数据 ★★★
   const isHistory = isHistoryData(item)
 
+  // ★★★ 历史数据 + 手机尺寸 → 前端智能裁剪 ★★★
   if (isHistory && (resolution === 'mobile' || resolution === 'mobile_s')) {
     fetch(url)
       .then(res => {
@@ -1004,23 +910,27 @@ function downloadImage(resolution) {
         return res.blob()
       })
       .then(async (blob) => {
+        // 加载图片到 Image 对象
         const img = new Image()
         const imgUrl = URL.createObjectURL(blob)
         img.src = imgUrl
         await new Promise((resolve) => { img.onload = resolve; img.onerror = resolve })
         
+        // 检测主体位置
         let subjectPosition = null
         try {
           subjectPosition = await detectSalientRegion(img)
         } catch (e) {}
         URL.revokeObjectURL(imgUrl)
         
+        // 智能裁剪
         return smartCropWithSubject(blob, fileName, resolution, subjectPosition)
       })
       .catch(() => {
         window.open(url, '_blank')
       })
   } else {
+    // ★★★ 必应数据 或 非手机尺寸 → 直接下载 ★★★
     fetch(url)
       .then(res => {
         if (!res.ok) throw new Error('下载失败')

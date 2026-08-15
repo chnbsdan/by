@@ -27,6 +27,7 @@ const props = defineProps({
     type: String,
     default: ''
   },
+  // ★★★ 新增：是否是历史数据 ★★★
   isHistory: {
     type: Boolean,
     default: false
@@ -36,10 +37,22 @@ const props = defineProps({
 const loading = ref(true)
 const imgRef = ref(null)
 
+// ★★★ 图片加载完成后检测主体 ★★★
 function onLoad() {
   loading.value = false
-  // 历史数据的主体检测由 App.vue 中的 smartCropForPreview 处理
-  // 这里不需要额外处理，因为预览 URL 已经是裁剪后的图片
+  
+  // 如果是历史数据，检测主体
+  if (props.isHistory && imgRef.value) {
+    // 从 window 获取 detectSalientRegion 函数
+    const detect = window.detectSalientRegion
+    if (detect) {
+      detect(imgRef.value).then(pos => {
+        if (pos && pos.x && pos.y) {
+          imgRef.value.style.objectPosition = pos.x + '% ' + pos.y + '%'
+        }
+      }).catch(() => {})
+    }
+  }
 }
 </script>
 
