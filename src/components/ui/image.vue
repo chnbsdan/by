@@ -38,8 +38,6 @@ const imgRef = ref(null)
 
 function onLoad() {
   loading.value = false
-  // 历史数据的主体检测由 App.vue 中的 smartCropForPreview 处理
-  // 这里不需要额外处理，因为预览 URL 已经是裁剪后的图片
 }
 </script>
 
@@ -55,7 +53,8 @@ function onLoad() {
 .ui-image__img {
   width: 100% !important;
   height: 100% !important;
-  object-fit: cover !important;
+  /* ★★★ 改成 contain，完整显示图片 ★★★ */
+  object-fit: contain !important;
   opacity: 0;
   transition: opacity 0.5s ease;
   display: block;
