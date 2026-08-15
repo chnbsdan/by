@@ -171,7 +171,7 @@ const toolbarVisible = ref(true)
 const dropdownOpen = ref(false)
 const dropdownRef = ref(null)
 
-// 缩放状态（暂时保留，后续可移除）
+// 缩放状态
 const scale = ref(1)
 const translateX = ref(0)
 const translateY = ref(0)
@@ -191,12 +191,31 @@ const commentVisible = ref(false)
 function detectSalientRegion(imageElement) {
   return new Promise((resolve) => {
     const img = imageElement
-    if (!img.complete) {
-      img.onload = () => resolve(doEnhancedDetect(img))
-      img.onerror = () => resolve({ x: 50, y: 45 })
+    
+    // 如果图片已经加载完成，直接检测
+    if (img.complete && img.naturalWidth > 0) {
+      try {
+        resolve(doEnhancedDetect(img))
+      } catch (e) {
+        console.warn('检测失败:', e)
+        resolve({ x: 50, y: 45 })
+      }
       return
     }
-    resolve(doEnhancedDetect(img))
+    
+    // 等待加载
+    img.onload = () => {
+      try {
+        resolve(doEnhancedDetect(img))
+      } catch (e) {
+        console.warn('检测失败:', e)
+        resolve({ x: 50, y: 45 })
+      }
+    }
+    img.onerror = () => {
+      console.warn('图片加载失败，使用默认位置')
+      resolve({ x: 50, y: 45 })
+    }
   })
 }
 
@@ -720,11 +739,18 @@ function findBestRegion(saliency, size, origWidth, origHeight) {
 
 // ★★★ 获取主体位置 ★★★
 async function getSubjectPosition(imageUrl, imgElement) {
+  // 确保 imgElement 有效
+  if (!imgElement) {
+    console.warn('⚠️ imgElement 为空')
+    return { x: 50, y: 45 }
+  }
+  
   const position = await detectSalientRegion(imgElement)
   if (position) {
-    console.log('🎯 算法检测到主体位置:', position)
+    console.log('🎯 检测到主体位置:', position)
+    window.__lastDetectPos = position
   }
-  return position
+  return position || { x: 50, y: 45 }
 }
 
 // ============================================================
@@ -807,6 +833,8 @@ async function smartCropForPreview(url, resolution) {
     img.crossOrigin = 'anonymous'
     img.onload = async function() {
       try {
+        console.log('📷 预览裁剪开始，图片尺寸:', img.width, 'x', img.height)
+        
         const targetW = resolution === 'mobile_s' ? 768 : 1080
         const targetH = resolution === 'mobile_s' ? 1280 : 1920
         const imgW = img.width
@@ -814,6 +842,7 @@ async function smartCropForPreview(url, resolution) {
         const targetRatio = targetW / targetH
 
         const pos = await getSubjectPosition(url, img)
+        console.log('📷 预览裁剪使用位置:', pos)
 
         let cropX, cropY, cropWidth, cropHeight
 
@@ -859,7 +888,10 @@ async function smartCropForPreview(url, resolution) {
         resolve(url)
       }
     }
-    img.onerror = () => resolve(url)
+    img.onerror = () => {
+      console.warn('预览图片加载失败')
+      resolve(url)
+    }
     img.src = url
   })
 }
@@ -1181,6 +1213,8 @@ async function smartCropWithSubject(blob, fileName, resolution) {
 
     img.onload = async function() {
       try {
+        console.log('📷 下载裁剪开始，图片尺寸:', img.width, 'x', img.height)
+        
         const targetW = resolution === 'mobile_s' ? 768 : 1080
         const targetH = resolution === 'mobile_s' ? 1280 : 1920
 
@@ -1189,6 +1223,7 @@ async function smartCropWithSubject(blob, fileName, resolution) {
         const targetRatio = targetW / targetH
 
         const pos = await getSubjectPosition(url, img)
+        console.log('📷 下载裁剪使用位置:', pos)
 
         let cropX, cropY, cropWidth, cropHeight
 
@@ -1249,6 +1284,7 @@ async function smartCropWithSubject(blob, fileName, resolution) {
     }
 
     img.onerror = function() {
+      console.warn('下载图片加载失败')
       downloadBlob(blob, fileName)
       resolve()
     }
