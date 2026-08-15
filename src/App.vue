@@ -141,7 +141,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import UiDialog from './components/ui/dialog.vue'
 import UiImage from './components/ui/image.vue'
 
@@ -185,36 +185,15 @@ const lastTranslateY = ref(0)
 const commentVisible = ref(false)
 
 // ============================================================
-// ★★★ AI 主体检测（优先） + 算法降级 ★★★
+// ★★★ 算法主体检测（多尺度，小物体优先） ★★★
 // ============================================================
 
-// ★★★ 调用 Cloudflare AI 检测主体 ★★★
-async function detectSubjectWithAI(imageUrl) {
-  try {
-    const response = await fetch('/api/detect', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ imageUrl })
-    })
-    const result = await response.json()
-    if (result.success && result.position) {
-      console.log('✅ AI检测成功:', result.position, result.label || '')
-      return result.position
-    }
-    return null
-  } catch (e) {
-    console.warn('⚠️ AI检测失败，降级到算法检测:', e.message)
-    return null
-  }
-}
-
-// ★★★ 算法检测（降级方案） ★★★
 function detectSalientRegion(imageElement) {
   return new Promise((resolve) => {
     const img = imageElement
     if (!img.complete) {
       img.onload = () => resolve(doEnhancedDetect(img))
-      img.onerror = () => resolve({ x: 50, y: 50 })
+      img.onerror = () => resolve({ x: 50, y: 45 })
       return
     }
     resolve(doEnhancedDetect(img))
@@ -225,7 +204,7 @@ function doEnhancedDetect(img) {
   try {
     const width = img.naturalWidth || img.width
     const height = img.naturalHeight || img.height
-    if (width === 0 || height === 0) return { x: 50, y: 50 }
+    if (width === 0 || height === 0) return { x: 50, y: 45 }
     
     const size = 256
     const canvas = document.createElement('canvas')
@@ -263,7 +242,7 @@ function doEnhancedDetect(img) {
     
   } catch (e) {
     console.warn('算法检测失败:', e)
-    return { x: 50, y: 50 }
+    return { x: 50, y: 45 }
   }
 }
 
@@ -403,13 +382,26 @@ function gaussianBlur(data, size, radius) {
   return result
 }
 
+// ★★★ 核心：多尺度检测，小物体优先 ★★★
 function findBestRegion(saliency, size, origWidth, origHeight) {
   let maxScore = 0
   let bestX = size / 2
   let bestY = size / 2
-  
-  // ★★★ 多尺度检测，小区域更高权重（优先检测小鸟等小主体） ★★★
-  for (let regionSize = 15; regionSize <= 50; regionSize += 5) {
+
+  // 多尺度、分层检测策略
+  // 小尺度（鸟类等小物体）权重最高
+  const scales = [
+    { size: 16, weight: 3.0 },   // 极小（鸟类）
+    { size: 24, weight: 2.2 },   // 小（小型动物）
+    { size: 34, weight: 1.2 },   // 中（中型物体）
+    { size: 44, weight: 0.6 },   // 大（大型物体，降权）
+    { size: 56, weight: 0.3 }    // 超大（背景，最低权）
+  ]
+
+  for (const scale of scales) {
+    const regionSize = scale.size
+    const weight = scale.weight
+    
     for (let y = 0; y < size - regionSize; y += 2) {
       for (let x = 0; x < size - regionSize; x += 2) {
         let score = 0
@@ -424,22 +416,22 @@ function findBestRegion(saliency, size, origWidth, origHeight) {
         
         const cx = x + regionSize / 2
         const cy = y + regionSize / 2
+
+        // 1. 图片中央区域加分
         const distFromCenter = Math.sqrt(
           Math.pow((cx / size) - 0.5, 2) +
           Math.pow((cy / size) - 0.5, 2)
         )
+        const centerBonus = 1 + (1 - distFromCenter) * 0.2
+
+        // 2. 图片偏上区域加分（鸟类和主体通常在画面中上方）
+        const upBonus = 1 + (1 - cy / size) * 0.25
+
+        // 3. 最终得分
+        const finalScore = score * weight * centerBonus * upBonus
         
-        // ★★★ 小区域（15-25）给更高权重，优先检测小鸟 ★★★
-        let sizeWeight = 1.0
-        if (regionSize <= 20) sizeWeight = 2.0
-        else if (regionSize <= 30) sizeWeight = 1.5
-        else sizeWeight = 0.8
-        
-        const upWeight = 1 + (1 - cy / size) * 0.15
-        score *= sizeWeight * upWeight * (1 + (1 - distFromCenter) * 0.1)
-        
-        if (score > maxScore) {
-          maxScore = score
+        if (finalScore > maxScore) {
+          maxScore = finalScore
           bestX = cx
           bestY = cy
         }
@@ -448,15 +440,25 @@ function findBestRegion(saliency, size, origWidth, origHeight) {
   }
   
   if (maxScore < 0.001) {
-    return { x: 50, y: 50 }
+    return { x: 50, y: 45 }
   }
   
-  const offsetY = Math.max(15, (bestY / size) * 100 - 5)
+  // 适度上移，保留头部
+  const offsetY = Math.max(15, (bestY / size) * 100 - 4)
   
   return {
     x: Math.max(15, Math.min(85, (bestX / size) * 100)),
     y: Math.max(15, Math.min(85, offsetY))
   }
+}
+
+// ★★★ 获取主体位置（纯算法） ★★★
+async function getSubjectPosition(imageUrl, imgElement) {
+  const position = await detectSalientRegion(imgElement)
+  if (position) {
+    console.log('🎯 算法检测到主体位置:', position)
+  }
+  return position
 }
 
 // ============================================================
@@ -530,21 +532,8 @@ function getThumbUrl(item) {
 }
 
 // ============================================================
-// ★★★ 智能裁剪 - 优先 AI，降级算法 ★★★
+// ★★★ 智能裁剪 - 纯算法 ★★★
 // ============================================================
-
-async function getSubjectPosition(imageUrl, imgElement) {
-  // ★★★ 优先使用 AI 检测 ★★★
-  let position = await detectSubjectWithAI(imageUrl)
-  
-  // ★★★ AI 失败，降级到算法检测 ★★★
-  if (!position) {
-    console.log('🔄 降级到算法检测')
-    position = await detectSalientRegion(imgElement)
-  }
-  
-  return position
-}
 
 async function smartCropForPreview(url, resolution) {
   return new Promise((resolve) => {
@@ -558,7 +547,7 @@ async function smartCropForPreview(url, resolution) {
         const imgH = img.height
         const targetRatio = targetW / targetH
 
-        // ★★★ 获取主体位置（优先 AI） ★★★
+        // 获取主体位置
         const pos = await getSubjectPosition(url, img)
 
         let cropX, cropY, cropWidth, cropHeight
@@ -601,7 +590,7 @@ async function smartCropForPreview(url, resolution) {
         ctx.drawImage(img, cropX, cropY, cropWidth, cropHeight, 0, 0, targetW, targetH)
         resolve(canvas.toDataURL('image/jpeg', 0.9))
       } catch (e) {
-        console.warn('裁剪失败:', e)
+        console.warn('预览裁剪失败:', e)
         resolve(url)
       }
     }
@@ -934,7 +923,7 @@ async function smartCropWithSubject(blob, fileName, resolution) {
         const imgH = img.height
         const targetRatio = targetW / targetH
 
-        // ★★★ 获取主体位置（优先 AI） ★★★
+        // 获取主体位置
         const pos = await getSubjectPosition(url, img)
 
         let cropX, cropY, cropWidth, cropHeight
@@ -989,6 +978,7 @@ async function smartCropWithSubject(blob, fileName, resolution) {
 
         URL.revokeObjectURL(url)
       } catch (error) {
+        console.warn('下载裁剪失败:', error)
         downloadBlob(blob, fileName)
         resolve()
       }
