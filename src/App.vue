@@ -69,14 +69,12 @@
 
     <button v-show="showBackToTop" class="back-to-top" @click="scrollToTop"><i class="fas fa-arrow-up"></i></button>
 
-    <!-- ★★★ 预览 - 使用 ui-dialog + ui-image ★★★ -->
+    <!-- ★★★ 预览 ★★★ -->
     <ui-dialog :visible="previewVisible" @close="closePreview">
       <div class="relative grid h-screen w-screen place-items-center of-hidden text-white">
-        <!-- 箭头 - 在图片上层 -->
         <button class="arrow arrow-left" @click.stop="prevPreview"><i class="fas fa-chevron-left"></i></button>
         <button class="arrow arrow-right" @click.stop="nextPreview"><i class="fas fa-chevron-right"></i></button>
 
-        <!-- 图片 - 占满全屏 -->
         <div class="preview-image-wrapper" @click="toggleToolbar">
           <ui-image 
             :src="previewUrl" 
@@ -85,7 +83,6 @@
           />
         </div>
 
-        <!-- 工具栏 -->
         <div class="toolbar" :class="{ hidden: !toolbarVisible }">
           <a href="/" class="btn"><i class="fas fa-home"></i> <span>首页</span></a>
           <div class="dropdown" ref="dropdownRef">
@@ -112,7 +109,6 @@
           <button class="btn" @click="closePreview"><i class="fas fa-times"></i></button>
         </div>
 
-        <!-- 信息面板 -->
         <div class="info-panel" :class="{ hidden: !toolbarVisible }">
           <div class="copyright">{{ previewItem?.copyright }}</div>
           <div class="date">{{ previewItem?.startdate || previewItem?.date }}</div>
@@ -185,14 +181,13 @@ const lastTranslateY = ref(0)
 const commentVisible = ref(false)
 
 // ============================================================
-// ★★★ 算法主体检测（多尺度，小物体优先） ★★★
+// 算法主体检测（多尺度，小物体优先）
 // ============================================================
 
 function detectSalientRegion(imageElement) {
   return new Promise((resolve) => {
     const img = imageElement
     
-    // 如果图片已经加载完成，直接检测
     if (img.complete && img.naturalWidth > 0) {
       try {
         resolve(doEnhancedDetect(img))
@@ -203,7 +198,6 @@ function detectSalientRegion(imageElement) {
       return
     }
     
-    // 等待加载
     img.onload = () => {
       try {
         resolve(doEnhancedDetect(img))
@@ -269,7 +263,6 @@ function doEnhancedDetect(img) {
       }
     }
     
-    // ★★★ 10种检测策略融合 ★★★
     const saliencies = []
     saliencies.push({ data: computeGraySaliency(gray, size), weight: 0.12 })
     saliencies.push({ data: computeColorSaliency(r, g, b, size), weight: 0.10 })
@@ -664,7 +657,6 @@ function gaussianBlur(data, size, radius) {
   return result
 }
 
-// ★★★ 核心：多尺度检测，小物体优先 ★★★
 function findBestRegion(saliency, size, origWidth, origHeight) {
   let maxScore = 0
   let bestX = size / 2
@@ -737,9 +729,7 @@ function findBestRegion(saliency, size, origWidth, origHeight) {
   }
 }
 
-// ★★★ 获取主体位置 ★★★
 async function getSubjectPosition(imageUrl, imgElement) {
-  // 确保 imgElement 有效
   if (!imgElement) {
     console.warn('⚠️ imgElement 为空')
     return { x: 50, y: 45 }
@@ -748,7 +738,6 @@ async function getSubjectPosition(imageUrl, imgElement) {
   const position = await detectSalientRegion(imgElement)
   if (position) {
     console.log('🎯 检测到主体位置:', position)
-    window.__lastDetectPos = position
   }
   return position || { x: 50, y: 45 }
 }
@@ -824,7 +813,7 @@ function getThumbUrl(item) {
 }
 
 // ============================================================
-// ★★★ 智能裁剪 - 纯算法 ★★★
+// 智能裁剪
 // ============================================================
 
 async function smartCropForPreview(url, resolution) {
@@ -833,55 +822,63 @@ async function smartCropForPreview(url, resolution) {
     img.crossOrigin = 'anonymous'
     img.onload = async function() {
       try {
-        console.log('📷 预览裁剪开始，图片尺寸:', img.width, 'x', img.height)
-        
-        const targetW = resolution === 'mobile_s' ? 768 : 1080
-        const targetH = resolution === 'mobile_s' ? 1280 : 1920
         const imgW = img.width
         const imgH = img.height
-        const targetRatio = targetW / targetH
-
+        console.log('📷 预览裁剪开始，图片尺寸:', imgW, 'x', imgH)
+        
         const pos = await getSubjectPosition(url, img)
         console.log('📷 预览裁剪使用位置:', pos)
-
-        let cropX, cropY, cropWidth, cropHeight
-
-        if (pos) {
-          const centerX = (pos.x / 100) * imgW
-          const centerY = (pos.y / 100) * imgH
-
-          if (imgW / imgH > targetRatio) {
-            cropHeight = imgH
-            cropWidth = imgH * targetRatio
-            cropX = Math.max(0, Math.min(imgW - cropWidth, centerX - cropWidth * 0.5))
-            cropY = 0
-          } else {
-            cropWidth = imgW
-            cropHeight = imgW / targetRatio
-            cropX = 0
-            cropY = Math.max(0, Math.min(imgH - cropHeight, centerY - cropHeight * 0.5))
-          }
-        } else {
-          if (imgW / imgH > targetRatio) {
-            cropHeight = imgH
-            cropWidth = imgH * targetRatio
-            cropX = (imgW - cropWidth) / 2
-            cropY = 0
-          } else {
-            cropWidth = imgW
-            cropHeight = imgW / targetRatio
-            cropX = 0
-            cropY = (imgH - cropHeight) / 2
-          }
-        }
-
+        
         const canvas = document.createElement('canvas')
         const ctx = canvas.getContext('2d')
-        canvas.width = targetW
-        canvas.height = targetH
         ctx.imageSmoothingEnabled = true
         ctx.imageSmoothingQuality = 'high'
-        ctx.drawImage(img, cropX, cropY, cropWidth, cropHeight, 0, 0, targetW, targetH)
+        
+        if (resolution === 'mobile_s') {
+          const targetW = 768
+          const targetH = 1280
+          const ratio = targetW / targetH
+          
+          let cropX = 0, cropY = 0, cropW = imgW, cropH = imgH
+          
+          if (pos) {
+            const centerX = (pos.x / 100) * imgW
+            const centerY = (pos.y / 100) * imgH
+            
+            if (imgW / imgH > ratio) {
+              cropH = imgH
+              cropW = imgH * ratio
+              cropX = Math.max(0, Math.min(imgW - cropW, centerX - cropW / 2))
+              cropY = 0
+            } else {
+              cropW = imgW
+              cropH = imgW / ratio
+              cropX = 0
+              cropY = Math.max(0, Math.min(imgH - cropH, centerY - cropH / 2))
+            }
+          } else {
+            if (imgW / imgH > ratio) {
+              cropH = imgH
+              cropW = imgH * ratio
+              cropX = (imgW - cropW) / 2
+              cropY = 0
+            } else {
+              cropW = imgW
+              cropH = imgW / ratio
+              cropX = 0
+              cropY = (imgH - cropH) / 2
+            }
+          }
+          
+          canvas.width = targetW
+          canvas.height = targetH
+          ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, targetW, targetH)
+        } else {
+          canvas.width = imgW
+          canvas.height = imgH
+          ctx.drawImage(img, 0, 0)
+        }
+        
         resolve(canvas.toDataURL('image/jpeg', 0.9))
       } catch (e) {
         console.warn('预览裁剪失败:', e)
@@ -1213,58 +1210,65 @@ async function smartCropWithSubject(blob, fileName, resolution) {
 
     img.onload = async function() {
       try {
-        console.log('📷 下载裁剪开始，图片尺寸:', img.width, 'x', img.height)
-        
-        const targetW = resolution === 'mobile_s' ? 768 : 1080
-        const targetH = resolution === 'mobile_s' ? 1280 : 1920
-
         const imgW = img.width
         const imgH = img.height
-        const targetRatio = targetW / targetH
-
+        console.log('📷 下载裁剪开始，图片尺寸:', imgW, 'x', imgH)
+        
         const pos = await getSubjectPosition(url, img)
         console.log('📷 下载裁剪使用位置:', pos)
-
-        let cropX, cropY, cropWidth, cropHeight
-
-        if (pos) {
-          const centerX = (pos.x / 100) * imgW
-          const centerY = (pos.y / 100) * imgH
-
-          if (imgW / imgH > targetRatio) {
-            cropHeight = imgH
-            cropWidth = imgH * targetRatio
-            cropX = Math.max(0, Math.min(imgW - cropWidth, centerX - cropWidth * 0.5))
-            cropY = 0
-          } else {
-            cropWidth = imgW
-            cropHeight = imgW / targetRatio
-            cropX = 0
-            cropY = Math.max(0, Math.min(imgH - cropHeight, centerY - cropHeight * 0.5))
-          }
-        } else {
-          if (imgW / imgH > targetRatio) {
-            cropHeight = imgH
-            cropWidth = imgH * targetRatio
-            cropX = (imgW - cropWidth) / 2
-            cropY = 0
-          } else {
-            cropWidth = imgW
-            cropHeight = imgW / targetRatio
-            cropX = 0
-            cropY = (imgH - cropHeight) / 2
-          }
-        }
-
+        
         const canvas = document.createElement('canvas')
         const ctx = canvas.getContext('2d')
-        canvas.width = targetW
-        canvas.height = targetH
-
         ctx.imageSmoothingEnabled = true
         ctx.imageSmoothingQuality = 'high'
-        ctx.drawImage(img, cropX, cropY, cropWidth, cropHeight, 0, 0, targetW, targetH)
-
+        
+        const isMobile = resolution === 'mobile_s' || resolution === 'mobile'
+        
+        if (isMobile) {
+          const targetW = resolution === 'mobile_s' ? 768 : 1080
+          const targetH = resolution === 'mobile_s' ? 1280 : 1920
+          const ratio = targetW / targetH
+          
+          let cropX = 0, cropY = 0, cropW = imgW, cropH = imgH
+          
+          if (pos) {
+            const centerX = (pos.x / 100) * imgW
+            const centerY = (pos.y / 100) * imgH
+            
+            if (imgW / imgH > ratio) {
+              cropH = imgH
+              cropW = imgH * ratio
+              cropX = Math.max(0, Math.min(imgW - cropW, centerX - cropW / 2))
+              cropY = 0
+            } else {
+              cropW = imgW
+              cropH = imgW / ratio
+              cropX = 0
+              cropY = Math.max(0, Math.min(imgH - cropH, centerY - cropH / 2))
+            }
+          } else {
+            if (imgW / imgH > ratio) {
+              cropH = imgH
+              cropW = imgH * ratio
+              cropX = (imgW - cropW) / 2
+              cropY = 0
+            } else {
+              cropW = imgW
+              cropH = imgW / ratio
+              cropX = 0
+              cropY = (imgH - cropH) / 2
+            }
+          }
+          
+          canvas.width = targetW
+          canvas.height = targetH
+          ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, targetW, targetH)
+        } else {
+          canvas.width = imgW
+          canvas.height = imgH
+          ctx.drawImage(img, 0, 0)
+        }
+        
         canvas.toBlob((croppedBlob) => {
           if (croppedBlob) {
             downloadBlob(croppedBlob, fileName)
@@ -1415,7 +1419,6 @@ window.openComment = openComment
 </script>
 
 <style>
-/* ===== CSS 变量 ===== */
 :root {
   --bg-primary: #0d0d1a;
   --bg-secondary: #1a1a2e;
@@ -1486,11 +1489,9 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 #app { width: 100%; height: 100%; }
 .app { display: flex; flex-direction: column; width: 100%; height: 100vh; height: 100dvh; padding: 0; overflow: hidden; background: var(--bg-primary); }
 
-/* ===== 汉堡按钮 ===== */
 .nav-toggle { position: fixed; top: 12px; left: 12px; z-index: 1001; background: var(--nav-bg); backdrop-filter: blur(8px); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); font-size: 20px; padding: 6px 12px; cursor: pointer; transition: 0.2s; line-height: 1; -webkit-tap-highlight-color: transparent; }
 .nav-toggle:hover { background: var(--accent-hover); border-color: rgba(79,195,247,0.3); }
 
-/* ===== 导航栏 ===== */
 .navbar { position: fixed; top: 12px; left: 56px; z-index: 1000; background: var(--nav-bg); backdrop-filter: blur(16px); border: 1px solid var(--border-color); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; min-width: 200px; opacity: 0; transform: translateY(-10px) scale(0.95); transition: opacity 0.25s ease, transform 0.25s ease, visibility 0.25s ease; pointer-events: none; visibility: hidden; box-shadow: 0 8px 32px var(--shadow-color); max-width: 90vw; }
 .navbar.toggle-open { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; visibility: visible; }
 .navbar-header { display: flex; justify-content: space-between; align-items: center; width: 100%; }
@@ -1509,14 +1510,12 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 .navbar .nav-actions a, .navbar .nav-actions button { background: var(--input-bg); border: none; color: var(--text-secondary); padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; transition: 0.2s; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; font-family: inherit; }
 .navbar .nav-actions a:hover, .navbar .nav-actions button:hover { background: var(--btn-hover); color: var(--text-primary); }
 
-/* ===== 网格 ===== */
 .grid { display: flex; flex-wrap: wrap; flex: 1; padding: 0; overflow-y: auto; min-height: 0; background: var(--bg-primary); align-content: flex-start; gap: 0; }
 .grid::-webkit-scrollbar { width: 6px; }
 .grid::-webkit-scrollbar-track { background: rgba(255,255,255,0.04); border-radius: 3px; }
 .grid::-webkit-scrollbar-thumb { background: var(--accent-color); border-radius: 3px; }
 .grid::-webkit-scrollbar-thumb:hover { background: #81d4fa; }
 
-/* ★★★ 加载状态 ★★★ */
 .loading-state {
   flex: 0 0 100%;
   display: flex;
@@ -1531,7 +1530,6 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 .loading-state .loading-text { font-size: 16px; color: var(--text-muted); }
 @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-/* ===== ★★★ 卡片 ★★★ ===== */
 .card { 
   position: relative; 
   overflow: hidden; 
@@ -1598,7 +1596,6 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 .card .info .date { font-size: 15px; color: rgba(255,255,255,0.8); font-weight: 600; }
 .card .info .title { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* ===== 加载更多 ===== */
 .loading-indicator { 
   flex: 0 0 100%; 
   text-align: center; 
@@ -1658,7 +1655,6 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 }
 .back-to-top { display: flex; }
 
-/* ===== ★★★ 预览图片占满全屏 ★★★ ===== */
 .preview-image-wrapper {
   position: absolute;
   top: 0;
@@ -1672,7 +1668,6 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
   object-fit: cover !important;
 }
 
-/* ===== ★★★ 箭头 ★★★ ===== */
 .arrow { 
   position: fixed; 
   top: 50%; 
@@ -1699,7 +1694,6 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 .arrow-left { left: 20px; }
 .arrow-right { right: 20px; }
 
-/* ===== 工具栏 ===== */
 .toolbar { 
   position: fixed; 
   top: 16px; 
@@ -1739,7 +1733,6 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 .toolbar .btn i { font-size: 13px; color: #fff; }
 .toolbar .btn:hover { background: var(--red-btn-hover); border-color: rgba(200,40,40,0.5); color: #fff; transform: translateY(-1px); box-shadow: 0 6px 28px rgba(220,60,60,0.35); }
 
-/* ===== 下拉菜单 ===== */
 .dropdown { position: relative; display: inline-block; }
 .dropdown .btn { padding-right: 10px; }
 .dropdown .btn i.fa-chevron-down { font-size: 10px; margin-left: 2px; opacity: 0.9; transition: transform 0.25s ease; }
@@ -1783,7 +1776,6 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 .dropdown-menu a:hover i { color: #ffffff; }
 .dropdown-menu .divider { height: 1px; background: rgba(0,0,0,0.06); margin: 4px 12px; }
 
-/* ===== 打赏 ===== */
 .donate-qr-wrapper { position: relative; display: inline-block; }
 .donate-qr-wrapper .qr-tooltip { 
   display: block; 
@@ -1815,7 +1807,6 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 .donate-qr-wrapper .qr-tooltip .qr-item .qr-label.alipay { color: #1677ff; }
 .donate-qr-wrapper .qr-tooltip .qr-footer { text-align: center; color: var(--text-muted); font-size: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-color); letter-spacing: 0.5px; }
 
-/* ===== 信息面板 ===== */
 .info-panel { 
   position: fixed; 
   bottom: 80px; 
@@ -1833,7 +1824,6 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 .info-panel .date { font-size: 16px; color: rgba(255,255,255,0.5); margin-top: 6px; font-weight: 400; }
 .info-panel .desc { font-size: 17px; color: rgba(255,255,255,0.55); margin-top: 6px; max-width: 600px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis; line-height: 1.7; font-weight: 400; }
 
-/* ===== 评论 ===== */
 .comment-overlay { 
   display: none; 
   position: fixed; 
@@ -1880,7 +1870,6 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 .comment-body::-webkit-scrollbar { width: 4px; }
 .comment-body::-webkit-scrollbar-thumb { background: #ccc; border-radius: 2px; }
 
-/* ===== 响应式 ===== */
 @media (max-width: 768px) {
   .navbar { left: 52px; min-width: 160px; padding: 12px 14px; top: 10px; }
   .nav-toggle { font-size: 18px; padding: 5px 10px; top: 10px; left: 10px; }
