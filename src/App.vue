@@ -386,7 +386,7 @@ function findBestRegion(saliency, size, origWidth, origHeight) {
   let maxScore = 0
   let bestX = size / 2
   let bestY = size / 2
-  const regionSize = Math.min(40, Math.floor(size * 0.2))
+  const regionSize = Math.min(60, Math.floor(size * 0.35))
   
   for (let y = 0; y < size - regionSize; y += 2) {
     for (let x = 0; x < size - regionSize; x += 2) {
@@ -406,7 +406,10 @@ function findBestRegion(saliency, size, origWidth, origHeight) {
         Math.pow((cx / size) - 0.5, 2) +
         Math.pow((cy / size) - 0.5, 2)
       )
-      score *= (1 + (1 - distFromCenter) * 0.1)
+      
+      // 上方区域权重更高（让裁剪区域偏上，保留头部）
+      const upWeight = 1 + (1 - cy / size) * 0.3
+      score *= (1 + (1 - distFromCenter) * 0.1) * upWeight
       
       if (score > maxScore) {
         maxScore = score
@@ -420,9 +423,12 @@ function findBestRegion(saliency, size, origWidth, origHeight) {
     return { x: 50, y: 50 }
   }
   
+  // 额外向上偏移 8%，确保头部包含
+  const offsetY = Math.max(15, (bestY / size) * 100 - 8)
+  
   return {
     x: Math.max(15, Math.min(85, (bestX / size) * 100)),
-    y: Math.max(15, Math.min(85, (bestY / size) * 100))
+    y: Math.max(15, Math.min(85, offsetY))
   }
 }
 
@@ -511,24 +517,29 @@ async function smartCropForPreview(url, resolution) {
         const imgW = img.width
         const imgH = img.height
         const targetRatio = targetW / targetH
-        
+
         detectSalientRegion(img).then(pos => {
           let cropX, cropY, cropWidth, cropHeight
-          
+
           if (pos) {
             const centerX = (pos.x / 100) * imgW
             const centerY = (pos.y / 100) * imgH
+
+            // ★★★ 以图片边缘为边界，不缩小 ★★★
             if (imgW / imgH > targetRatio) {
               cropHeight = imgH
               cropWidth = imgH * targetRatio
-              cropX = Math.max(0, Math.min(imgW - cropWidth, centerX - cropWidth / 2))
+              cropX = Math.max(0, Math.min(imgW - cropWidth, centerX - cropWidth * 0.5))
               cropY = 0
             } else {
               cropWidth = imgW
               cropHeight = imgW / targetRatio
               cropX = 0
-              cropY = Math.max(0, Math.min(imgH - cropHeight, centerY - cropHeight / 2))
+              cropY = Math.max(0, Math.min(imgH - cropHeight, centerY - cropHeight * 0.5))
             }
+
+            // ★★★ 不额外扩大，也不缩小 ★★★
+
           } else {
             if (imgW / imgH > targetRatio) {
               cropHeight = imgH
@@ -542,7 +553,7 @@ async function smartCropForPreview(url, resolution) {
               cropY = (imgH - cropHeight) / 2
             }
           }
-          
+
           const canvas = document.createElement('canvas')
           const ctx = canvas.getContext('2d')
           canvas.width = targetW
@@ -890,22 +901,26 @@ async function smartCropWithSubject(blob, fileName, resolution, subjectPosition)
         const targetRatio = targetW / targetH
 
         let cropX, cropY, cropWidth, cropHeight
-        
+
         if (subjectPosition) {
           const centerX = (subjectPosition.x / 100) * imgW
           const centerY = (subjectPosition.y / 100) * imgH
-          
+
+          // ★★★ 直接以图片边缘为边界，不缩小 ★★★
           if (imgW / imgH > targetRatio) {
             cropHeight = imgH
             cropWidth = imgH * targetRatio
-            cropX = Math.max(0, Math.min(imgW - cropWidth, centerX - cropWidth / 2))
+            cropX = Math.max(0, Math.min(imgW - cropWidth, centerX - cropWidth * 0.5))
             cropY = 0
           } else {
             cropWidth = imgW
             cropHeight = imgW / targetRatio
             cropX = 0
-            cropY = Math.max(0, Math.min(imgH - cropHeight, centerY - cropHeight / 2))
+            cropY = Math.max(0, Math.min(imgH - cropHeight, centerY - cropHeight * 0.5))
           }
+
+          // ★★★ 不额外扩大，也不缩小 ★★★
+
         } else {
           if (imgW / imgH > targetRatio) {
             cropHeight = imgH
