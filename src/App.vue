@@ -122,10 +122,19 @@
           <button class="btn" @click="closePreview"><i class="fas fa-times"></i></button>
         </div>
 
+        <!-- ★★★ 优化后的信息面板 ★★★ -->
         <div class="info-panel" :class="{ hidden: !toolbarVisible }">
-          <div class="copyright">{{ previewItem?.copyright }}</div>
-          <div class="date">{{ previewItem?.startdate || previewItem?.date }}</div>
-          <div class="desc">{{ previewItem?.title }}</div>
+          <div class="info-counter">{{ previewIndex + 1 }} / {{ allData.length }}</div>
+          <div class="info-title">{{ displayTitle }}</div>
+          <div class="info-meta">
+            <span class="info-date">{{ formatDate(previewItem?.startdate || previewItem?.date) }}</span>
+            <span class="info-divider">·</span>
+            <span class="info-copyright">{{ displayCopyright }}</span>
+          </div>
+          <div class="info-actions">
+            <button class="info-btn" @click.stop="copyTitle" title="复制标题"><i class="fas fa-copy"></i></button>
+            <button class="info-btn" @click.stop="copyImageUrl" title="复制图片链接"><i class="fas fa-link"></i></button>
+          </div>
         </div>
       </div>
     </ui-dialog>
@@ -150,7 +159,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import UiDialog from './components/ui/dialog.vue'
 import UiImage from './components/ui/image.vue'
 
@@ -195,6 +204,140 @@ const lastTranslateY = ref(0)
 
 // 评论
 const commentVisible = ref(false)
+
+// ============================================================
+// 计算属性 - 信息面板去重
+// ============================================================
+const displayTitle = computed(() => {
+  const item = previewItem.value
+  if (!item) return ''
+  const title = item.title || ''
+  const copyright = item.copyright || ''
+  // 如果 title 和 copyright 相似度很高，只显示 title
+  if (title && copyright && isSimilar(title, copyright)) {
+    return title
+  }
+  return title || copyright || '无标题'
+})
+
+const displayCopyright = computed(() => {
+  const item = previewItem.value
+  if (!item) return ''
+  const title = item.title || ''
+  const copyright = item.copyright || ''
+  // 如果 title 和 copyright 相似度很高，不重复显示
+  if (title && copyright && isSimilar(title, copyright)) {
+    return ''
+  }
+  return copyright || ''
+})
+
+// 简单相似度判断（去除标点和空格后比较）
+function isSimilar(str1, str2) {
+  const clean = s => s.replace(/[^\w\u4e00-\u9fa5]/g, '').toLowerCase()
+  const a = clean(str1)
+  const b = clean(str2)
+  if (a.length === 0 || b.length === 0) return false
+  // 如果一个是另一个的子串，或重合度大于60%
+  if (a.includes(b) || b.includes(a)) return true
+  let match = 0
+  const len = Math.min(a.length, b.length)
+  for (let i = 0; i < len; i++) {
+    if (a[i] === b[i]) match++
+  }
+  return match / len > 0.6
+}
+
+// ============================================================
+// 工具函数 - 日期格式化
+// ============================================================
+function formatDate(dateStr) {
+  if (!dateStr) return ''
+  const str = String(dateStr)
+  // 处理 YYYYMMDD 格式
+  if (str.length === 8 && /^\d{8}$/.test(str)) {
+    const year = str.slice(0, 4)
+    const month = str.slice(4, 6)
+    const day = str.slice(6, 8)
+    return `${year}年${parseInt(month)}月${parseInt(day)}日`
+  }
+  // 处理 YYYY-MM-DD 格式
+  if (str.includes('-')) {
+    const parts = str.split('-')
+    if (parts.length === 3) {
+      return `${parts[0]}年${parseInt(parts[1])}月${parseInt(parts[2])}日`
+    }
+  }
+  return str
+}
+
+// ============================================================
+// 复制功能
+// ============================================================
+function copyTitle() {
+  const text = displayTitle.value
+  if (!text) return
+  navigator.clipboard.writeText(text).then(() => {
+    showToast('✅ 标题已复制')
+  }).catch(() => {
+    // 降级方案
+    const el = document.createElement('textarea')
+    el.value = text
+    document.body.appendChild(el)
+    el.select()
+    document.execCommand('copy')
+    document.body.removeChild(el)
+    showToast('✅ 标题已复制')
+  })
+}
+
+function copyImageUrl() {
+  const url = previewUrl.value
+  if (!url) return
+  navigator.clipboard.writeText(url).then(() => {
+    showToast('✅ 图片链接已复制')
+  }).catch(() => {
+    const el = document.createElement('textarea')
+    el.value = url
+    document.body.appendChild(el)
+    el.select()
+    document.execCommand('copy')
+    document.body.removeChild(el)
+    showToast('✅ 图片链接已复制')
+  })
+}
+
+// Toast 提示
+function showToast(msg) {
+  const existing = document.querySelector('.toast-message')
+  if (existing) existing.remove()
+  
+  const div = document.createElement('div')
+  div.className = 'toast-message'
+  div.textContent = msg
+  Object.assign(div.style, {
+    position: 'fixed',
+    bottom: '160px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    background: 'rgba(0,0,0,0.8)',
+    backdropFilter: 'blur(12px)',
+    color: '#fff',
+    padding: '10px 24px',
+    borderRadius: '10px',
+    fontSize: '14px',
+    zIndex: '9999',
+    fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif',
+    boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+    animation: 'fadeInUp 0.3s ease'
+  })
+  document.body.appendChild(div)
+  setTimeout(() => {
+    div.style.opacity = '0'
+    div.style.transition = 'opacity 0.3s ease'
+    setTimeout(() => div.remove(), 300)
+  }, 2000)
+}
 
 // ============================================================
 // 选中卡片
@@ -1559,14 +1702,14 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
 /* ============================================================
-   卡片样式 - 关键修改
+   卡片样式
    ============================================================ */
 .card { 
   position: relative; 
   overflow: hidden; 
   background: var(--bg-card); 
   flex: 0 0 50%; 
-  cursor: zoom-in !important;  /* 放大镜加号 - 强制优先级 */
+  cursor: zoom-in !important;
   transition: background 0.3s ease, border 0.3s ease, box-shadow 0.3s ease; 
   contain: strict; 
   -webkit-tap-highlight-color: transparent; 
@@ -1576,7 +1719,7 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
   border: 3px solid transparent;
 }
 
-/* 悬停时显示红框 + 放大镜 */
+/* 悬停时：显示红框 + 放大镜 */
 .card:hover {
   cursor: zoom-in !important;
   border-color: var(--card-selected-border, #ff0000);
@@ -1584,7 +1727,7 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
   z-index: 5;
 }
 
-/* 点击选中后显示更明显的红框（保留点击选中状态） */
+/* 点击选中后：显示更明显的红框 */
 .card.card-selected {
   border-color: var(--card-selected-border, #ff0000);
   box-shadow: 0 0 30px rgba(255, 0, 0, 0.6);
@@ -1867,9 +2010,12 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 .donate-qr-wrapper .qr-tooltip .qr-item .qr-label.alipay { color: #1677ff; }
 .donate-qr-wrapper .qr-tooltip .qr-footer { text-align: center; color: var(--text-muted); font-size: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-color); letter-spacing: 0.5px; }
 
+/* ============================================================
+   优化后的信息面板
+   ============================================================ */
 .info-panel { 
   position: fixed; 
-  bottom: 80px; 
+  bottom: 100px; 
   left: 50%; 
   transform: translateX(-50%); 
   max-width: 90%; 
@@ -1878,11 +2024,103 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
   text-shadow: 0 2px 20px rgba(0,0,0,0.9); 
   z-index: 5; 
   transition: opacity 0.3s ease; 
+  padding: 18px 28px;
+  background: rgba(0,0,0,0.35);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.06);
+  box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+  min-width: 280px;
+  max-width: 600px;
 }
 .info-panel.hidden { opacity: 0 !important; pointer-events: none !important; }
-.info-panel .copyright { font-size: 20px; color: rgba(255,255,255,0.9); line-height: 1.6; font-weight: 500; letter-spacing: 0.5px; }
-.info-panel .date { font-size: 16px; color: rgba(255,255,255,0.5); margin-top: 6px; font-weight: 400; }
-.info-panel .desc { font-size: 17px; color: rgba(255,255,255,0.55); margin-top: 6px; max-width: 600px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis; line-height: 1.7; font-weight: 400; }
+
+.info-panel .info-counter {
+  font-size: 11px;
+  color: rgba(255,255,255,0.3);
+  letter-spacing: 2px;
+  margin-bottom: 6px;
+  font-weight: 300;
+  text-transform: uppercase;
+}
+
+.info-panel .info-title {
+  font-size: 22px;
+  color: rgba(255,255,255,0.95);
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  line-height: 1.5;
+  text-shadow: 0 2px 20px rgba(0,0,0,0.5);
+}
+
+.info-panel .info-meta {
+  margin-top: 8px;
+  font-size: 13px;
+  color: rgba(255,255,255,0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.info-panel .info-meta .info-divider {
+  color: rgba(255,255,255,0.15);
+}
+
+.info-panel .info-meta .info-date {
+  color: rgba(255,255,255,0.5);
+}
+
+.info-panel .info-meta .info-copyright {
+  color: rgba(255,255,255,0.35);
+  font-style: italic;
+}
+
+.info-panel .info-actions {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  pointer-events: auto;
+}
+
+.info-panel .info-actions .info-btn {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 8px;
+  color: rgba(255,255,255,0.5);
+  padding: 5px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.info-panel .info-actions .info-btn:hover {
+  background: rgba(255,255,255,0.15);
+  color: rgba(255,255,255,0.9);
+  border-color: rgba(255,255,255,0.15);
+  transform: translateY(-1px);
+}
+
+.info-panel .info-actions .info-btn:active {
+  transform: scale(0.95);
+}
+
+/* Toast 动画 */
+@keyframes toastFadeIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(20px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+.toast-message {
+  animation: toastFadeIn 0.3s ease forwards;
+}
 
 .comment-overlay { 
   display: none; 
@@ -1939,9 +2177,17 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
   .toolbar { top: 12px; right: 12px; gap: 6px; }
   .toolbar .btn { font-size: 11px; padding: 5px 10px; }
   .toolbar .btn span { display: none; }
-  .info-panel .copyright { font-size: 17px; }
-  .info-panel .desc { font-size: 14px; -webkit-line-clamp: 1; }
-  .info-panel .date { font-size: 13px; }
+  
+  .info-panel { 
+    bottom: 70px; 
+    padding: 14px 20px;
+    min-width: unset;
+    width: 90%;
+    max-width: 90%;
+  }
+  .info-panel .info-title { font-size: 17px; }
+  .info-panel .info-meta { font-size: 12px; }
+  .info-panel .info-actions .info-btn { font-size: 11px; padding: 4px 10px; }
 }
 @media (max-width: 576px) {
   .arrow { font-size: 18px; padding: 12px 8px; }
@@ -1952,8 +2198,16 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
   .dropdown-menu { min-width: 130px; right: -6px; }
   .dropdown-menu a { font-size: 11px; padding: 6px 12px; }
   .back-to-top { width: 34px; height: 34px; font-size: 14px; bottom: 60px; right: 10px; }
-  .info-panel .copyright { font-size: 15px; }
-  .info-panel .desc { font-size: 13px; }
-  .info-panel .date { font-size: 12px; }
+  
+  .info-panel { 
+    bottom: 60px; 
+    padding: 12px 16px;
+    border-radius: 12px;
+  }
+  .info-panel .info-counter { font-size: 10px; }
+  .info-panel .info-title { font-size: 15px; }
+  .info-panel .info-meta { font-size: 11px; gap: 6px; }
+  .info-panel .info-actions { margin-top: 8px; }
+  .info-panel .info-actions .info-btn { font-size: 10px; padding: 3px 8px; }
 }
 </style>
