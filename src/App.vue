@@ -37,7 +37,7 @@
         <div class="loading-text">壁纸加载中...</div>
       </div>
 
-      <div v-for="item in displayData" :key="item.startdate || item.date" class="card" @click="openPreview(item)">
+      <div v-for="item in displayData" :key="item.startdate || item.date" class="card" :class="{ 'card-selected': selectedCard === item }" @click="selectCard(item)">
         <div class="placeholder-bg" :style="{ backgroundImage: 'url(' + getThumbUrl(item) + ')' }" :class="{ hidden: item._loaded }"></div>
         <img 
           :src="getThumbUrl(item)" 
@@ -75,11 +75,24 @@
         <button class="arrow arrow-left" @click.stop="prevPreview"><i class="fas fa-chevron-left"></i></button>
         <button class="arrow arrow-right" @click.stop="nextPreview"><i class="fas fa-chevron-right"></i></button>
 
-        <div class="preview-image-wrapper" @click="toggleToolbar">
+        <div class="preview-image-wrapper" 
+             @click="toggleToolbar"
+             @wheel.prevent="onWheelZoom"
+             @mousedown="startDrag"
+             @mousemove="moveDrag"
+             @mouseup="endDrag"
+             @mouseleave="endDrag"
+             @touchstart="startDrag"
+             @touchmove="moveDrag"
+             @touchend="endDrag">
           <ui-image 
             :src="previewUrl" 
             :alt="previewItem?.title || ''" 
-            :is-history="isHistoryData(previewItem)" 
+            :is-history="isHistoryData(previewItem)"
+            :style="{
+              transform: 'scale(' + scale + ') translate(' + translateX + 'px, ' + translateY + 'px)',
+              transition: isDragging ? 'none' : 'transform 0.3s ease'
+            }"
           />
         </div>
 
@@ -158,6 +171,9 @@ const navOpen = ref(false)
 const gridRef = ref(null)
 const showBackToTop = ref(false)
 
+// 选中卡片
+const selectedCard = ref(null)
+
 // 预览
 const previewVisible = ref(false)
 const previewItem = ref(null)
@@ -179,6 +195,14 @@ const lastTranslateY = ref(0)
 
 // 评论
 const commentVisible = ref(false)
+
+// ============================================================
+// 选中卡片
+// ============================================================
+function selectCard(item) {
+  selectedCard.value = item
+  openPreview(item)
+}
 
 // ============================================================
 // 算法主体检测（多尺度，小物体优先）
@@ -1034,6 +1058,7 @@ async function openPreview(item) {
   previewIndex.value = idx >= 0 ? idx : allData.value.indexOf(item)
   previewItem.value = allData.value[previewIndex.value]
   
+  // 重置缩放
   scale.value = 1
   translateX.value = 0
   translateY.value = 0
@@ -1138,6 +1163,7 @@ function handleClickOutside(e) {
   }
 }
 
+// 图片缩放相关
 function onWheelZoom(e) {
   e.preventDefault()
   const delta = e.deltaY > 0 ? -0.1 : 0.1
@@ -1451,6 +1477,7 @@ window.openComment = openComment
   --red-btn-shadow: rgba(220,60,60,0.25);
   --donate-bg: rgba(20,22,36,0.4);
   --donate-border: rgba(255,255,255,0.08);
+  --card-selected-border: #ff0000;
 }
 [data-theme="light"] {
   --bg-primary: #f0f2f5;
@@ -1481,6 +1508,7 @@ window.openComment = openComment
   --red-btn-shadow: rgba(220,60,60,0.2);
   --donate-bg: rgba(255,255,255,0.85);
   --donate-border: rgba(0,0,0,0.08);
+  --card-selected-border: #cc0000;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -1535,14 +1563,22 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
   overflow: hidden; 
   background: var(--bg-card); 
   flex: 0 0 50%; 
-  cursor: pointer; 
-  transition: background 0.3s ease; 
+  cursor: zoom-in;
+  transition: background 0.3s ease, border 0.3s ease, box-shadow 0.3s ease; 
   contain: strict; 
   -webkit-tap-highlight-color: transparent; 
   border-radius: 0; 
   min-height: 0; 
   aspect-ratio: 3 / 5;
+  border: 3px solid transparent;
 }
+
+.card.card-selected {
+  border-color: var(--card-selected-border);
+  box-shadow: 0 0 20px rgba(255, 0, 0, 0.4);
+  z-index: 10;
+}
+
 @media (min-width: 768px) { 
   .card { 
     flex: 0 0 20%; 
@@ -1662,10 +1698,14 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
   width: 100%;
   height: 100%;
   z-index: 0;
-  cursor: pointer;
+  cursor: default;
+  overflow: hidden;
 }
+
 .preview-image-wrapper :deep(.ui-image__img) {
   object-fit: cover !important;
+  cursor: default;
+  transform-origin: center center;
 }
 
 .arrow { 
