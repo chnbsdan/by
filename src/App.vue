@@ -1558,12 +1558,15 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 .loading-state .loading-text { font-size: 16px; color: var(--text-muted); }
 @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
+/* ============================================================
+   卡片样式 - 关键修改
+   ============================================================ */
 .card { 
   position: relative; 
   overflow: hidden; 
   background: var(--bg-card); 
   flex: 0 0 50%; 
-  cursor: zoom-in;
+  cursor: zoom-in !important;  /* 放大镜加号 - 强制优先级 */
   transition: background 0.3s ease, border 0.3s ease, box-shadow 0.3s ease; 
   contain: strict; 
   -webkit-tap-highlight-color: transparent; 
@@ -1573,10 +1576,21 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
   border: 3px solid transparent;
 }
 
+/* 确保 hover 时也是放大镜 */
+.card:hover {
+  cursor: zoom-in !important;
+}
+
+/* 选中卡片 - 红色边框 */
 .card.card-selected {
-  border-color: var(--card-selected-border);
+  border-color: var(--card-selected-border, #ff0000);
   box-shadow: 0 0 20px rgba(255, 0, 0, 0.4);
   z-index: 10;
+}
+
+/* 卡片内部图片 - 继承父级光标 */
+.card img {
+  cursor: inherit;
 }
 
 @media (min-width: 768px) { 
@@ -1691,6 +1705,9 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
 }
 .back-to-top { display: flex; }
 
+/* ============================================================
+   预览区域 - 默认箭头
+   ============================================================ */
 .preview-image-wrapper {
   position: absolute;
   top: 0;
@@ -1698,13 +1715,13 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
   width: 100%;
   height: 100%;
   z-index: 0;
-  cursor: default;
+  cursor: default !important;
   overflow: hidden;
 }
 
 .preview-image-wrapper :deep(.ui-image__img) {
   object-fit: cover !important;
-  cursor: default;
+  cursor: default !important;
   transform-origin: center center;
 }
 
