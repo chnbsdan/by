@@ -1576,15 +1576,18 @@ html, body { width: 100%; height: 100%; background: var(--bg-primary); font-fami
   border: 3px solid transparent;
 }
 
-/* 确保 hover 时也是放大镜 */
+/* 悬停时显示红框 + 放大镜 */
 .card:hover {
   cursor: zoom-in !important;
+  border-color: var(--card-selected-border, #ff0000);
+  box-shadow: 0 0 20px rgba(255, 0, 0, 0.3);
+  z-index: 5;
 }
 
-/* 选中卡片 - 红色边框 */
+/* 点击选中后显示更明显的红框（保留点击选中状态） */
 .card.card-selected {
   border-color: var(--card-selected-border, #ff0000);
-  box-shadow: 0 0 20px rgba(255, 0, 0, 0.4);
+  box-shadow: 0 0 30px rgba(255, 0, 0, 0.6);
   z-index: 10;
 }
 
