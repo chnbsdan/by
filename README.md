@@ -6,6 +6,7 @@
 [![Vite](https://img.shields.io/badge/Vite-5.0-purple?logo=vite)](https://vitejs.dev/)
 [![Cloudflare Pages](https://img.shields.io/badge/Cloudflare-Pages-orange?logo=cloudflare)](https://pages.cloudflare.com/)
 [![GitHub Actions](https://img.shields.io/badge/GitHub-Actions-blue?logo=githubactions)](https://github.com/features/actions)
+[data](https://raw.githubusercontent.com/chnbsdan/by/main/public/json/data.json)
 
 一个美观、高性能的必应壁纸展示与下载工具，支持每日自动更新、智能主体识别、多分辨率下载等功能。
 
